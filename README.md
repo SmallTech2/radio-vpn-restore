@@ -102,6 +102,10 @@ verification de texte ne serait pas une validation fonctionnelle.
 **Les sessions VPN du VPS de destination sont interrompues pendant la restauration.**
 Si l'IP publique change, adapter `remote` dans les profils deja distribues, sans changer
 les certificats. Les profils copies sur les postes ne sont pas modifies a distance.
+Reinstaller ensuite radio-vpn-backup avec les cles publiques de collecte et de chiffrement
+pour reprendre les sauvegardes automatiques. Adapter l'adresse du VPS dans la tache NAS et
+verifier sa nouvelle empreinte SSH depuis une console de confiance avant de mettre a jour
+`known_hosts` ; ne pas importer les cles SSH d'hote de l'ancien serveur.
 Pour une bascule planifiee, faire une derniere sauvegarde apres gel de l'administration
 du serveur source et le maintenir hors service apres bascule pour eviter des index divergents.
 

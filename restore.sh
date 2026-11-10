@@ -10,6 +10,18 @@ OLD_UI=false
 OLD_VPN=false
 OLD_TIMER=false
 die(){ echo "ERREUR : $*" >&2; exit 1; }
+wait_crl(){
+  local state n
+  for ((n=0; n<120; n++)); do
+    state=$(systemctl show --property=ActiveState --value radio-renew-crl.service) || return 1
+    case "$state" in
+      inactive|failed) return 0 ;;
+      active|activating|reloading|deactivating) sleep 1 ;;
+      *) return 1 ;;
+    esac
+  done
+  return 1
+}
 resume_old(){
   local failed=0
   if $OLD_VPN; then systemctl start openvpn@server.service || failed=1; fi
@@ -92,11 +104,7 @@ main(){
   systemctl is-active --quiet radio-renew-crl.timer && OLD_TIMER=true
   STOPPED=true
   systemctl stop radio-renew-crl.timer
-  for ((n=0; n<120; n++)); do
-    systemctl is-active --quiet radio-renew-crl.service || break
-    sleep 1
-  done
-  ! systemctl is-active --quiet radio-renew-crl.service || die 'Renouvellement CRL encore actif.'
+  wait_crl || die 'Renouvellement CRL encore actif ou etat inaccessible.'
   ! pgrep -f '[/]easyrsa( |$)|[/]opt/scripts/(genclient|revoke|renew|rmcert|generate_ca)' >/dev/null || die 'Operation PKI active ; reessayer plus tard.'
   systemctl stop openvpn-ui.service openvpn@server.service
   python3 "$BASE/scripts/restore_data.py" preserve / "$WORK/previous"

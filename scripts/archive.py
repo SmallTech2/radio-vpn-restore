@@ -124,6 +124,13 @@ def validate_pki(payload):
 def allowed(name):
     return any(name == top or name.startswith(top + "/") for top in TREES) or name in FILES
 
+def digest(stream):
+    value = hashlib.sha256()
+    for block in iter(lambda: stream.read(1024 * 1024), b""):
+        value.update(block)
+    return value.hexdigest()
+
+
 def check(archive):
     with tarfile.open(archive, "r:gz") as tar:
         members = tar.getmembers()
@@ -154,7 +161,7 @@ def check(archive):
             kind = "link" if member.issym() else "dir" if member.isdir() else "file"
             if (kind, member.mode, member.uid, member.gid) != (entry["type"], entry["mode"], entry["uid"], entry["gid"]):
                 raise ValueError("Metadonnees incompatibles.")
-            if member.isfile() and hashlib.sha256(tar.extractfile(member).read()).hexdigest() != entry["sha256"]:
+            if member.isfile() and digest(tar.extractfile(member)) != entry["sha256"]:
                 raise ValueError("Empreinte interne invalide.")
             if member.issym():
                 permitted = {"etc/openvpn/pki": "/usr/share/easy-rsa/pki", "opt/scripts/qrencode": "/usr/bin/qrencode"}

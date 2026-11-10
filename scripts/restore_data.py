@@ -25,6 +25,10 @@ REPLACE = (
 
 def unpack(archive, destination):
     manifest = check(archive)
+    with tarfile.open(archive, "r:gz") as tar:
+        size = sum(member.size for member in tar.getmembers() if member.isfile())
+    if shutil.disk_usage(destination.parent).free < size * 3 + 64 * 1024 * 1024:
+        raise ValueError("Espace libre insuffisant pour extraire et restaurer.")
     # Validation complete avant la premiere extraction. Les liens sont crees en dernier.
     destination.mkdir(mode=0o700)
     with tarfile.open(archive, "r:gz") as tar:
