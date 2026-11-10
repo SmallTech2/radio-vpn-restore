@@ -9,7 +9,44 @@ STOPPED=false
 OLD_UI=false
 OLD_VPN=false
 OLD_TIMER=false
+IDENTITY=''
 die(){ echo "ERREUR : $*" >&2; exit 1; }
+prepare_archive(){
+  local archive="$1" format
+  IDENTITY=''
+  format=$(python3 -c '
+import pathlib,sys
+with pathlib.Path(sys.argv[1]).open("rb") as stream:
+    header=stream.read(32)
+if header.startswith(b"\x1f\x8b"): print("gzip")
+elif header.startswith(b"age-encryption.org/v1\n"): print("age")
+else: sys.exit(1)
+' "$archive") || die 'Format inconnu : archive gzip ou age attendue.'
+  if [[ "$format" == gzip ]]; then
+    cp -- "$archive" "$WORK/backup.tar.gz"
+  else
+    for tool in age age-keygen; do command -v "$tool" >/dev/null || die 'Archive chiffree : installer age (sudo apt install age).'; done
+    read -r -p 'Chemin de la cle privee age de dechiffrement : ' IDENTITY </dev/tty
+    [[ -f "$IDENTITY" ]] || die 'Cle age absente.'
+    [[ -z $(find "$IDENTITY" -perm /077 -print) ]] || die 'Cle privee age : permissions 0600 requises.'
+    age -d -i "$IDENTITY" -o "$WORK/backup.tar.gz" "$archive" 2>"$WORK/decrypt-error" || die 'Dechiffrement refuse : cle, archive ou integrite a verifier.'
+  fi
+  gzip -t "$WORK/backup.tar.gz"
+}
+create_rescue(){
+  local rescue="$1"
+  tar -czf "$WORK/previous.tar.gz" -C "$WORK/previous" .
+  gzip -t "$WORK/previous.tar.gz"
+  if [[ -n "$IDENTITY" ]]; then
+    age-keygen -y "$IDENTITY" > "$WORK/recipients"
+    age -R "$WORK/recipients" -o "$WORK/rescue.age" "$WORK/previous.tar.gz"
+    mv -- "$WORK/rescue.age" "$rescue"
+  else
+    mv -- "$WORK/previous.tar.gz" "$rescue"
+  fi
+  chmod 600 "$rescue"
+  (cd "$(dirname "$rescue")"; sha256sum "${rescue##*/}" > "${rescue##*/}.sha256")
+}
 wait_crl(){
   local state n
   for ((n=0; n<120; n++)); do
@@ -57,7 +94,7 @@ main(){
   systemctl is-active --quiet nftables || die 'Pare-feu nftables inactif.'
   nft -c -f /etc/nftables.conf
   local archive public_ip detected admin answer home
-  read -r -p 'Chemin de la sauvegarde .tar.gz : ' archive </dev/tty
+  read -r -p 'Chemin de la sauvegarde (.tar.gz ou .tar.gz.age) : ' archive </dev/tty
   [[ -f "$archive" && ! -L "$archive" ]] || die 'Archive locale reguliere requise.'
   install -d -m 700 /var/lib/radio-vpn-restore /var/lib/radio-vpn-backup
   exec 9>/var/lib/radio-vpn-backup/backup.lock
@@ -66,8 +103,7 @@ main(){
   trap 'exit 1' HUP INT TERM
   WORK=$(mktemp -d /var/lib/radio-vpn-restore/.work.XXXXXXXX)
   echo 'Verification de l archive avant remplacement...'
-  cp -- "$archive" "$WORK/backup.tar.gz"
-  gzip -t "$WORK/backup.tar.gz"
+  prepare_archive "$archive"
   python3 "$BASE/scripts/restore_data.py" unpack "$WORK/backup.tar.gz" "$WORK/restore"
   local payload="$WORK/restore/payload"
   detected=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}') || detected=''
@@ -107,12 +143,9 @@ main(){
   systemctl stop openvpn-ui.service openvpn@server.service
   python3 "$BASE/scripts/restore_data.py" preserve / "$WORK/previous"
   local rescue="/var/lib/radio-vpn-restore/before-$(date -u +%Y%m%dT%H%M%SZ)-$(openssl rand -hex 4).tar.gz"
-  tar -czf "$WORK/previous.tar.gz" -C "$WORK/previous" .
-  gzip -t "$WORK/previous.tar.gz"
-  mv -- "$WORK/previous.tar.gz" "$rescue"
-  (cd /var/lib/radio-vpn-restore; sha256sum "${rescue##*/}" > "${rescue##*/}.sha256")
-  chmod 600 "$rescue"
-  echo "Sauvegarde de secours .tar.gz : $rescue"
+  [[ -z "$IDENTITY" ]] || rescue+=.age
+  create_rescue "$rescue"
+  echo "Sauvegarde de secours : $rescue"
   CHANGED=true
   python3 "$BASE/scripts/restore_data.py" replace "$payload" /
   # Gen-crl conserve index.txt, les cles et les certificats ; il remet a jour la validite de la CRL.
@@ -134,5 +167,6 @@ main(){
   echo 'Restauration terminee : VPN et UI actifs, IP tun0 verifiee, CRL renouvelee sans regeneration de certificats.'
   echo 'Verifier un ancien client et un certificat revoque, puis une nouvelle connexion SSH avant de fermer cette session.'
   echo 'Si l IP publique a change : adapter remote dans les profils deja distribues, sans renouveler les certificats.'
+  [[ -z "$IDENTITY" ]] || echo 'Retirer la copie temporaire de la cle privee age apres les verifications ; conserver la cle originale hors VPS.'
 }
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi

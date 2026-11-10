@@ -25,7 +25,7 @@ sudo bash restore.sh
 Indiquer le chemin de l'archive `.tar.gz`, confirmer l'IP publique et le compte Linux,
 puis saisir `RESTAURER`.
 
-**Les archives ne sont pas chiffrees et contiennent des secrets, notamment la cle
+**Les archives du mode standard ne sont pas chiffrees et contiennent des secrets, notamment la cle
 privee de la CA OpenVPN et les cles privees des clients. Ce choix est volontaire et
 le risque est accepte pour simplifier la restauration.** Utiliser des dossiers 0700
 et fichiers 0600 sur le VPS/NAS ; ne jamais publier ces archives. SHA-256 controle
@@ -78,10 +78,27 @@ sudo bash restore.sh
 
 Le script demande uniquement :
 
-1. Chemin local de l'archive `.tar.gz`.
+1. Chemin local de l'archive `.tar.gz` ou `.tar.gz.age`.
 2. Nouvelle IPv4 publique, avec detection et confirmation lorsque possible.
 3. Compte administrateur **existant**, propose depuis `SUDO_USER` ou l'unique membre du groupe sudo.
 4. Confirmation explicite `RESTAURER` apres les controles.
+
+Le format est reconnu par le contenu du fichier. Une archive standard est restauree
+directement, **sans age et sans demande de cle**.
+
+### Archive chiffree : option age
+
+Seulement pour une archive chiffree, installer l'outil :
+
+```bash
+sudo apt install -y age
+```
+
+Copier temporairement la cle privee age de secours dans un dossier prive du nouveau VPS,
+fichier 0600. Lancer la meme commande `sudo bash restore.sh` et indiquer l'archive
+chiffree ; le script demande alors le chemin de cette cle. Une cle erronee ou une archive
+chiffree alteree provoque un refus avant remplacement des donnees. Conserver la cle
+originale hors du VPS et retirer sa copie temporaire apres verification.
 
 Un utilisateur different de celui du VPS source est accepte. Il doit deja avoir ete cree
 et verifie par radio-vpn sur la destination. Ses mots de passe et cles SSH restent ceux
@@ -89,7 +106,7 @@ du nouveau VPS. Les services de la reference tournent root et ne contiennent pas
 dependance au nom du compte Linux source ; le nom choisi est inscrit dans les metadonnees
 de restauration, sans import d'UID, de `/etc/passwd` ou de `/etc/shadow`.
 
-Avant toute substitution, le script copie l archive dans un dossier root 0700, controle gzip, le format,
+Avant toute substitution, le script copie ou dechiffre l archive dans un dossier root 0700, controle gzip, le format,
 les empreintes internes, les chemins, les types, permissions et liens, la version de reference,
 la PKI, les revocations, les IP fixes et SQLite. Il refuse un reseau VPN incompatible avec
 les routes du nouveau VPS. La duree depend surtout de la preparation Debian et de la taille
@@ -100,7 +117,8 @@ des donnees ; aucune duree de restauration sur VPS n'est garantie sans recette r
 Apres confirmation : arret de l'UI et du VPN, attente du renouvellement CRL eventuel,
 copie de l'etat precedent puis sauvegarde de secours `.tar.gz` sous
 `/var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz`, acces root 0600.
-Un fichier `.sha256` accompagne cette sauvegarde de secours.
+Un fichier `.sha256` accompagne cette sauvegarde de secours. Si l archive source est
+chiffree, le secours est aussi chiffre avec la meme cle et porte le suffixe `.tar.gz.age`.
 Les copies de travail en clair restent dans un dossier root 0700 et sont nettoyees sur
 sortie normale ou erreur interceptable. Un SIGKILL/panne peut laisser ce dossier prive :
 le traiter comme un secret et le nettoyer apres diagnostic.
@@ -125,7 +143,7 @@ verification de texte ne serait pas une validation fonctionnelle.
 **Les sessions VPN du VPS de destination sont interrompues pendant la restauration.**
 Si l'IP publique change, adapter `remote` dans les profils deja distribues, sans changer
 les certificats. Les profils copies sur les postes ne sont pas modifies a distance.
-Reinstaller ensuite radio-vpn-backup avec la cle SSH publique de collecte
+Reinstaller ensuite radio-vpn-backup avec la cle SSH publique de collecte (et la cle publique age si ce mode est choisi)
 pour reprendre les sauvegardes automatiques. Adapter l'adresse du VPS dans la tache NAS et
 verifier sa nouvelle empreinte SSH depuis une console de confiance avant de mettre a jour
 `known_hosts` ; ne pas importer les cles SSH d'hote de l'ancien serveur.
@@ -160,6 +178,10 @@ Ne lancer cette procedure que sur le secours genere par cet outil et avec un ope
 present. Verifier les services avant d'effacer les copies en clair. Les secours
 locaux ne sont pas purges automatiquement : les retirer apres validation pour
 ne pas remplir le disque a force de restaurations.
+
+Pour un secours chiffre, verifier son fichier `.age.sha256`, puis dechiffrer avec
+`age -d -i /chemin/cle-privee -o /root/secours.tar.gz /chemin/before-DATE-ALEA.tar.gz.age`.
+Appliquer ensuite la procedure manuelle ci-dessus en utilisant `/root/secours.tar.gz`.
 
 ## 5. Recette et limites
 

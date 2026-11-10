@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .audit-tools/
 *.tar.gz
+*.age
 *.key
 *.pem
 *.db

@@ -22,3 +22,8 @@ l'ancien serveur, faire une derniere sauvegarde, puis le maintenir hors service 
 
 Ces controles sur VPS/DSM restent a realiser. Les fixtures automatiques ne valident pas
 les reseaux d'un hebergeur, la console, le redemarrage reel ou une restauration de production.
+
+Tester les deux modes : ENCRYPT=false sans age, puis ENCRYPT=true avec une cle generee
+hors du VPS. Verifier la collecte et la retention d'un ensemble mixte, la detection du
+format a la restauration, le refus d'une mauvaise cle et le chiffrement du secours
+lorsque l'archive restauree est chiffree. Le mode standard ne doit jamais demander de cle.

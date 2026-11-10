@@ -4,7 +4,11 @@ permissions:
   contents: read
 jobs:
   test:
+    name: Encryption ${{ matrix.encryption }}
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        encryption: [false, true]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -13,6 +17,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openssl
+          if ${{ matrix.encryption }}; then sudo apt-get install -y --no-install-recommends age; fi
       - name: Shell syntax
         run: |
           set -euo pipefail
