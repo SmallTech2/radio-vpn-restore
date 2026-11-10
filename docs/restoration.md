@@ -182,6 +182,8 @@ gzip -t "$ARCHIVE"
 Ne poursuivre qu'après `OK` et la réussite silencieuse de gzip. Le nom demandé est celui
 affiché par `ls`, pas un exemple à recopier. Le chemin absolu `ARCHIVE` est maintenant connu.
 Pour une archive `.age`, suivre le [guide séparé](encryption.md) ; ne pas lui appliquer gzip.
+Le contenu est détecté automatiquement dans `--check` et dans la restauration : aucune
+question de chiffrement pour une `.tar.gz`, chemin de clé privée demandé seulement pour age.
 
 **Nouveau VPS — même compte :**
 

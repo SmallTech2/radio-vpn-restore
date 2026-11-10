@@ -36,7 +36,10 @@ sudo bash restore.sh
 Si le dépôt existe déjà, utiliser son dossier propre et `git pull --ff-only` au lieu de
 le cloner à nouveau. Ne poursuivre qu'après réussite des contrôles. Donner au script le
 chemin de l'archive, confirmer l'IP publique et le compte existant, puis taper `RESTAURER`.
-**Le mode standard ne demande ni age ni clé de déchiffrement.**
+**Le mode standard ne demande ni age ni clé de déchiffrement.** Dans `--check` comme
+dans la restauration, le contenu est détecté automatiquement. Seule une archive age
+déclenche une demande de chemin de clé privée, une fois par exécution ; une clé absente,
+vide ou incorrecte provoque une erreur avant tout remplacement.
 
 `--check ARCHIVE` demande l’IP publique et le compte existant puis valide une copie privée
 et temporaire : aucune configuration remplacée, aucun service arrêté et aucun verrou de

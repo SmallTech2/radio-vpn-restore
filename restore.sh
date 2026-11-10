@@ -26,10 +26,10 @@ else: sys.exit(1)
     cp -- "$archive" "$WORK/backup.tar.gz"
   else
     for tool in age age-keygen; do command -v "$tool" >/dev/null || die 'Archive chiffree : installer age (sudo apt install age).'; done
-    read -r -p 'Chemin de la cle privee age de dechiffrement : ' IDENTITY </dev/tty
-    [[ -f "$IDENTITY" ]] || die 'Cle age absente.'
+    read -r -p 'Chemin de la cle privee age de dechiffrement : ' IDENTITY </dev/tty || die 'Chemin de cle age non fourni.'
+    [[ -f "$IDENTITY" && -s "$IDENTITY" ]] || die 'Cle privee age absente ou vide.'
     [[ -z $(find "$IDENTITY" -perm /077 -print) ]] || die 'Cle privee age : permissions 0600 requises.'
-    age -d -i "$IDENTITY" -o "$WORK/backup.tar.gz" "$archive" 2>"$WORK/decrypt-error" || die 'Dechiffrement refuse : cle, archive ou integrite a verifier.'
+    age -d -i "$IDENTITY" -o "$WORK/backup.tar.gz" "$archive" 2>"$WORK/decrypt-error" || die 'Dechiffrement impossible : cle privee incorrecte ou archive alteree.'
   fi
   gzip -t "$WORK/backup.tar.gz"
 }

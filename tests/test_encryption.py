@@ -39,13 +39,17 @@ class ArchiveModes(unittest.TestCase):
             with tarfile.open(rescue) as tar:
                 self.assertEqual(tar.extractfile("./state").read(), b"previous state")
 
-    def prepare(self, work, archive, identity=""):
+    def prepare(self, work, archive, identity="", stub_age=False):
         functions = work / "restore-functions.sh"
         functions.write_text((ROOT / "restore.sh").read_text().replace("</dev/tty", '<<< "$TEST_IDENTITY"'))
         code = f'source "{functions.as_posix()}"'
         code += '\nWORK="$TEST_WORK"\npython3(){ "$TEST_PYTHON" "$@"; }\n'
         if not identity:
             code += 'read(){ echo forbidden-read > "$WORK/key-asked"; return 99; }\nage(){ echo forbidden-age > "$WORK/age-called"; return 99; }\n'
+        else:
+            code += 'read(){ printf x >> "$WORK/key-asked"; builtin read "$@"; }\n'
+        if stub_age:
+            code += 'age(){ echo forbidden > "$WORK/age-called"; return 99; }\nage-keygen(){ return 99; }\n'
         code += 'prepare_archive "$TEST_ARCHIVE"\n'
         return subprocess.run([BASH], input=code, text=True, capture_output=True,
                               env=dict(os.environ, TEST_WORK=work.as_posix(), TEST_ARCHIVE=str(archive), TEST_IDENTITY=str(identity), TEST_PYTHON=pathlib.Path(sys.executable).as_posix()))
@@ -69,6 +73,22 @@ class ArchiveModes(unittest.TestCase):
             self.assertNotEqual(self.prepare(work, archive).returncode, 0)
             self.assertFalse((work / "backup.tar.gz").exists())
 
+    def test_missing_or_empty_age_key_is_clear_before_decryption(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = pathlib.Path(directory)
+            archive = folder / "encrypted.backup"
+            archive.write_bytes(b"age-encryption.org/v1\nfixture")
+            missing, empty = folder / "missing", folder / "empty"
+            empty.touch()
+            for key in (missing, empty):
+                with self.subTest(key=key):
+                    work = folder / (key.name + "-work"); work.mkdir()
+                    result = self.prepare(work, archive, key, stub_age=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("Cle privee age absente ou vide", result.stderr)
+                    self.assertEqual((work / "key-asked").read_bytes(), b"x")
+                    self.assertFalse((work / "age-called").exists())
+
     @unittest.skipUnless(shutil.which("age"), "Mode age teste dans le job CI avec age")
     def test_encrypted_detection_decryption_and_wrong_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -86,6 +106,8 @@ class ArchiveModes(unittest.TestCase):
                     work = folder / (key.name + "-work"); work.mkdir()
                     result = self.prepare(work, encrypted, key)
                     self.assertEqual(result.returncode == 0, success, result.stderr)
+                    self.assertEqual((work / "key-asked").read_bytes(), b"x")
+                    if not success: self.assertIn("cle privee incorrecte ou archive alteree", result.stderr)
                     if success: self.assertEqual((work / "backup.tar.gz").read_bytes(), plain.read_bytes())
             data = bytearray(encrypted.read_bytes()); data[-1] ^= 1; encrypted.write_bytes(data)
             corrupt = folder / "corrupt-work"; corrupt.mkdir()

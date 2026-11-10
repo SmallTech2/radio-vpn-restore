@@ -61,9 +61,14 @@ noms saisis sont ceux de `ls`, pas des chemins d'exemple. Vérifier `OK` avant d
 
 ## 3. Répondre au script et terminer
 
-**Nouveau VPS — même session :** donner le chemin complet de l'archive. Le script reconnaît
+**Nouveau VPS — même session :** `sudo bash restore.sh --check "$ARCHIVE"` permet
+d’abord de vérifier sans remplacement. Après réussite, `sudo bash restore.sh` lance la
+restauration. Les deux modes utilisent la même détection et le même déchiffrement.
+Donner le chemin complet de l’archive si demandé. Le script reconnaît
 son contenu et demande alors le chemin de la clé privée age, affiché ci-dessus. Il n'affiche
-pas cette clé et refuse un fichier de clé aux permissions trop ouvertes. Une mauvaise clé
+pas cette clé et ne demande son chemin qu’une fois par exécution. La même clé est
+réutilisée pour chiffrer le secours lors de la restauration réelle. Un fichier absent ou
+vide est signalé explicitement ; les permissions trop ouvertes sont refusées. Une mauvaise clé
 ou un fichier chiffré altéré provoque un refus avant remplacement des données.
 
 Après déchiffrement, les confirmations et contrôles sont ceux de la procédure standard.
