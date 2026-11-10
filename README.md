@@ -32,10 +32,13 @@ restauration** et ne jamais utiliser `-initialize-only` ou `init-pki` pour resta
 
 Recuperer ce depot, noter le commit (`git rev-parse HEAD`) et conserver cette copie.
 Il n'existe pas encore de Release stable des outils de restauration.
-Installer le seul prerequis supplementaire :
+Installer `age` et l'outil de recuperation des sources :
 
 ```bash
-sudo apt install -y age
+sudo apt install -y age git
+git clone https://github.com/SmallTech2/radio-vpn-restore.git
+cd radio-vpn-restore
+git rev-parse HEAD
 ```
 
 Copier sur le nouveau VPS l'archive chiffree et, temporairement, la cle privee age de secours.

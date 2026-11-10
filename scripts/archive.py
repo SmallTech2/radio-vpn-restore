@@ -71,6 +71,15 @@ def preflight(root):
     for name in TREES + FILES:
         if not (root / name).exists():
             raise ValueError("Element radio-vpn manquant : " + name)
+    runtime = root / "opt/openvpn-ui-runtime"
+    for name in ("openvpn-ui", "conf/app.conf", "db/data.db"):
+        if not (runtime / name).is_file() or (runtime / name).is_symlink():
+            raise ValueError("Runtime incomplet : " + name)
+    for name in ("static", "views", "swagger"):
+        if not (runtime / name).is_dir() or (runtime / name).is_symlink():
+            raise ValueError("Ressources UI absentes : " + name)
+    if not os.access(runtime / "openvpn-ui", os.X_OK):
+        raise ValueError("Binaire UI non executable.")
     link = root / "etc/openvpn/pki"
     if not link.is_symlink() or os.readlink(link) != "/usr/share/easy-rsa/pki":
         raise ValueError("Lien PKI radio-vpn inattendu.")

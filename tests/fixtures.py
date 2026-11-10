@@ -23,6 +23,10 @@ def installation(root, contract):
         (root / "etc/openvpn" / name).mkdir()
     (root / "etc/openvpn/pki").symlink_to("/usr/share/easy-rsa/pki")
     runtime = root / "opt/openvpn-ui-runtime"
+    (runtime / "openvpn-ui").write_text("fixture executable\\n")
+    (runtime / "openvpn-ui").chmod(0o755)
+    for name in ("static", "views", "swagger"):
+        (runtime / name).mkdir()
     (runtime / "conf").mkdir()
     (runtime / "db").mkdir()
     (runtime / "conf/app.conf").write_text('RadioPublicIP = "198.51.100.10"\nRadioVpnNetwork = "10.3.0.0/16"\n')
