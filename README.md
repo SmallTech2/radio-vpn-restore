@@ -1,207 +1,56 @@
 # radio-vpn-restore
 
-Restauration interactive d'une sauvegarde produite par
-[radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup), sur un VPS
-**Debian 13 AMD64 deja prepare avec radio-vpn radio-v2.4**.
+Restauration d'une sauvegarde [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup)
+sur un VPS Debian 13 AMD64 préparé avec **radio-vpn radio-v2.4**. La PKI, les certificats,
+révocations, IP fixes et comptes Web sont conservés ; aucune nouvelle CA n'est générée
+par cet outil. La CRL est remise à jour sans renouveler les certificats.
 
-Cet outil ne reimplemente pas l'installation. Il restaure la PKI et les clients sans
-regenerer leur CA, leurs cles ou certificats. La CRL est renouvelee a partir de l'index
-restaure pour remettre a jour sa validite, sans effacer les revocations.
-Code a valider sur VPS de test ; aucune Release n'est publiee.
+## Première restauration
+
+Suivre le [guide complet](docs/restoration.md) depuis le VPS vierge : préparation radio-vpn,
+récupération de l'archive sur le Synology, transfert depuis le poste administrateur,
+installation, assistant et contrôles avant/après redémarrage. Chaque commande indique
+sa machine, son compte et comment obtenir les chemins réels.
 
 ## Restauration d'urgence
 
-Sur le VPS de remplacement deja prepare avec radio-vpn radio-v2.4 :
-
-```bash
-sudo apt install -y git
-git clone https://github.com/SmallTech2/radio-vpn-restore.git
-cd radio-vpn-restore
-# Copier l'archive et son fichier .sha256 dans un dossier prive, puis verifier :
-(cd /chemin/sauvegardes && sha256sum -c NOM_ARCHIVE.tar.gz.sha256)
-sudo bash restore.sh
-```
-
-Indiquer le chemin de l'archive `.tar.gz`, confirmer l'IP publique et le compte Linux,
-puis saisir `RESTAURER`.
-
-**Les archives du mode standard ne sont pas chiffrees et contiennent des secrets, notamment la cle
-privee de la CA OpenVPN et les cles privees des clients. Ce choix est volontaire et
-le risque est accepte pour simplifier la restauration.** Utiliser des dossiers 0700
-et fichiers 0600 sur le VPS/NAS ; ne jamais publier ces archives. SHA-256 controle
-l'integrite, pas l'identite de leur auteur : choisir une source de confiance.
-
-## 1. Preparer le nouveau VPS
-
-Suivre la [procedure radio-vpn](https://github.com/SmallTech2/radio-vpn/blob/radio-v2.4/docs/installation.md)
-avec le tag fige **radio-v2.4**, y compris la relance manuelle apres redemarrage.
-Choisir le compte Linux du nouveau VPS, fournir sa cle publique et verifier son acces SSH.
-L'installation cree une PKI provisoire qui sera remplacee : ne pas creer/distribuer de clients
-sur cette installation provisoire. Garder le meme reseau VPN lorsque possible ; le reseau
-de la sauvegarde est ensuite conserve et les conflits avec les routes du nouveau VPS sont refuses.
+**Nouveau VPS — compte administrateur Linux avec sudo.** Prérequis : radio-vpn radio-v2.4
+entièrement installé, SSH par clé vérifié, archive `.tar.gz` et `.sha256` déjà copiées dans
+un dossier privé. Si ces prérequis manquent, commencer par le guide complet.
 
 ```bash
 sudo apt update
-sudo apt install -y curl
-curl --fail --location --proto '=https' --proto-redir '=https' \
-  https://raw.githubusercontent.com/SmallTech2/radio-vpn/radio-v2.4/Radio/deploy-vps.sh \
-  -o deploy-vps.sh
-sudo bash deploy-vps.sh
-```
-
-Le script radio-vpn refuse une installation deja presente : **ne pas le relancer apres
-restauration** et ne jamais utiliser `-initialize-only` ou `init-pki` pour restaurer.
-
-Recuperer ce depot, noter le commit (`git rev-parse HEAD`) et conserver cette copie.
-Il n'existe pas encore de Release stable des outils de restauration.
-Installer l'outil de recuperation des sources :
-
-```bash
 sudo apt install -y git
-git clone https://github.com/SmallTech2/radio-vpn-restore.git
-cd radio-vpn-restore
-git rev-parse HEAD
-```
-
-Copier sur le nouveau VPS l'archive `.tar.gz` et son fichier `.sha256`.
-Utiliser un repertoire prive 0700, des fichiers 0600, et des droits root pour l'execution.
-Verifier le transfert avec `sha256sum -c` depuis le repertoire contenant les deux fichiers.
-La restauration controle aussi les empreintes internes avant tout remplacement.
-
-## 2. Lancer la restauration
-
-Depuis ce depot, dans une session SSH interactive conservee ouverte :
-
-```bash
+git clone https://github.com/SmallTech2/radio-vpn-restore.git "$HOME/radio-vpn-restore"
+cd "$HOME/radio-vpn-restore"
+read -r -p 'Chemin absolu de l archive copiée sur ce VPS : ' ARCHIVE
+(cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
+gzip -t "$ARCHIVE"
 sudo bash restore.sh
 ```
 
-Le script demande uniquement :
+Si le dépôt existe déjà, utiliser son dossier propre et `git pull --ff-only` au lieu de
+le cloner à nouveau. Ne poursuivre qu'après réussite des contrôles. Donner au script le
+chemin de l'archive, confirmer l'IP publique et le compte existant, puis taper `RESTAURER`.
+**Le mode standard ne demande ni age ni clé de déchiffrement.**
 
-1. Chemin local de l'archive `.tar.gz` ou `.tar.gz.age`.
-2. Nouvelle IPv4 publique, avec detection et confirmation lorsque possible.
-3. Compte administrateur **existant**, propose depuis `SUDO_USER` ou l'unique membre du groupe sudo.
-4. Confirmation explicite `RESTAURER` apres les controles.
+## Guides et limites
 
-Le format est reconnu par le contenu du fichier. Une archive standard est restauree
-directement, **sans age et sans demande de cle**.
+- [Procédure complète, depuis Debian 13 vierge](docs/restoration.md).
+- [Option : restaurer une archive chiffrée avec age](docs/encryption.md).
+- [Erreur, sauvegarde de secours et retour arrière](docs/recovery.md).
+- [Check-list de validation réelle](docs/validation.md).
 
-### Archive chiffree : option age
+Les archives standard ne sont pas chiffrées et contiennent notamment la clé privée de
+la CA et les clés clients : ce choix est volontaire et son risque accepté. Stocker les
+fichiers en privé et ne jamais les publier. SHA-256 n'est pas une signature d'auteur.
 
-Seulement pour une archive chiffree, installer l'outil :
+La restauration interrompt le VPN de destination. Si l'IP publique change, les profils
+déjà distribués nécessitent l'adaptation de `remote`, sans renouveler leurs certificats.
+Les accès SSH, clés d'hôte et pare-feu du nouveau VPS sont conservés. Les tests automatisés
+ne remplacent pas une recette réelle VPS/DSM ; aucune Release des outils n'est publiée.
 
-```bash
-sudo apt install -y age
-```
+## Licence
 
-Copier temporairement la cle privee age de secours dans un dossier prive du nouveau VPS,
-fichier 0600. Lancer la meme commande `sudo bash restore.sh` et indiquer l'archive
-chiffree ; le script demande alors le chemin de cette cle. Une cle erronee ou une archive
-chiffree alteree provoque un refus avant remplacement des donnees. Conserver la cle
-originale hors du VPS et retirer sa copie temporaire apres verification.
-
-Un utilisateur different de celui du VPS source est accepte. Il doit deja avoir ete cree
-et verifie par radio-vpn sur la destination. Ses mots de passe et cles SSH restent ceux
-du nouveau VPS. Les services de la reference tournent root et ne contiennent pas de
-dependance au nom du compte Linux source ; le nom choisi est inscrit dans les metadonnees
-de restauration, sans import d'UID, de `/etc/passwd` ou de `/etc/shadow`.
-
-Avant toute substitution, le script copie ou dechiffre l archive dans un dossier root 0700, controle gzip, le format,
-les empreintes internes, les chemins, les types, permissions et liens, la version de reference,
-la PKI, les revocations, les IP fixes et SQLite. Il refuse un reseau VPN incompatible avec
-les routes du nouveau VPS. La duree depend surtout de la preparation Debian et de la taille
-des donnees ; aucune duree de restauration sur VPS n'est garantie sans recette reelle.
-
-## 3. Remise en service
-
-Apres confirmation : arret de l'UI et du VPN, attente du renouvellement CRL eventuel,
-copie de l'etat precedent puis sauvegarde de secours `.tar.gz` sous
-`/var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz`, acces root 0600.
-Un fichier `.sha256` accompagne cette sauvegarde de secours. Si l archive source est
-chiffree, le secours est aussi chiffre avec la meme cle et porte le suffixe `.tar.gz.age`.
-Les copies de travail en clair restent dans un dossier root 0700 et sont nettoyees sur
-sortie normale ou erreur interceptable. Un SIGKILL/panne peut laisser ce dossier prive :
-le traiter comme un secret et le nettoyer apres diagnostic.
-
-L'outil remplace les donnees et ressources UI/PKI, scripts et unites du projet, restaure
-les permissions et liens, adapte `RadioPublicIP`, l'adresse serveur dans SQLite,
-le modele client et les profils `.ovpn` stockes sur le serveur. Il conserve les hashes
-des comptes UI : **la connexion Web reprend avec les identifiants du serveur sauvegarde**.
-
-Les configurations SSH, cles d'hote, acces administrateur, nftables, sysctl et reseau OS
-du nouveau VPS sont conserves. Leurs anciennes configurations restent dans l'archive
-comme references. Il ne recharge ni ne redemarre SSH et ne remplace pas le pare-feu.
-L'installation radio-vpn prealable est responsable de leur preparation securisee.
-Les personnalisations hors reference ne sont pas restaurees automatiquement.
-
-Les services VPN/UI et timers CRL/logrotate sont actives, journald recharge par redemarrage,
-puis controles : certificats/cles/CRL, SQLite, configuration serveur attendue, etat systemd,
-adresse CIDR de tun0, ecoute UDP 1194 et page de connexion UI sur localhost.
-OpenVPN est reellement demarre pour valider le chargement de sa configuration ; une simple
-verification de texte ne serait pas une validation fonctionnelle.
-
-**Les sessions VPN du VPS de destination sont interrompues pendant la restauration.**
-Si l'IP publique change, adapter `remote` dans les profils deja distribues, sans changer
-les certificats. Les profils copies sur les postes ne sont pas modifies a distance.
-Reinstaller ensuite radio-vpn-backup avec la cle SSH publique de collecte (et la cle publique age si ce mode est choisi)
-pour reprendre les sauvegardes automatiques. Adapter l'adresse du VPS dans la tache NAS et
-verifier sa nouvelle empreinte SSH depuis une console de confiance avant de mettre a jour
-`known_hosts` ; ne pas importer les cles SSH d'hote de l'ancien serveur.
-Pour une bascule planifiee, faire une derniere sauvegarde apres gel de l'administration
-du serveur source et le maintenir hors service apres bascule pour eviter des index divergents.
-
-## 4. Echec et retour arriere
-
-En cas d'echec apres remplacement, le script tente d'arreter VPN/UI/CRL, de remettre les
-donnees precedentes et de retablir les services qui etaient actifs. SSH et nftables restent
-ceux de la destination. Tout echec du retour arriere est affiche explicitement.
-Une panne ou un SIGKILL ne peut pas etre intercepte : utiliser alors la console/SSH conserve.
-
-La sauvegarde `before-...tar.gz` est un **secours local** de l'installation remplacee,
-pas une archive de collecte au format v1. Pour une recuperation manuelle en maintenance :
-
-```bash
-sudo -i
-umask 077
-mkdir -m 700 /root/radio-vpn-secours
-(cd /var/lib/radio-vpn-restore && sha256sum -c before-DATE-ALEA.tar.gz.sha256)
-gzip -t /var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz
-tar -xpf /var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz --same-owner -C /root/radio-vpn-secours
-systemctl stop openvpn-ui.service openvpn@server.service radio-renew-crl.timer
-# Depuis le repertoire du depot, remplace uniquement les chemins fixes de l'outil :
-python3 scripts/restore_data.py replace /root/radio-vpn-secours /
-systemctl daemon-reload
-systemctl start openvpn@server.service openvpn-ui.service radio-renew-crl.timer
-```
-
-Ne lancer cette procedure que sur le secours genere par cet outil et avec un operateur
-present. Verifier les services avant d'effacer les copies en clair. Les secours
-locaux ne sont pas purges automatiquement : les retirer apres validation pour
-ne pas remplir le disque a force de restaurations.
-
-Pour un secours chiffre, verifier son fichier `.age.sha256`, puis dechiffrer avec
-`age -d -i /chemin/cle-privee -o /root/secours.tar.gz /chemin/before-DATE-ALEA.tar.gz.age`.
-Appliquer ensuite la procedure manuelle ci-dessus en utilisant `/root/secours.tar.gz`.
-
-## 5. Recette et limites
-
-Realiser le [plan de recette](docs/validation.md) : ancien certificat et IP fixe conserves,
-certificat revoque refuse, nouveau client cree, SSH/UI/pare-feu et redemarrage verifies.
-Verifier aussi une restauration avec nouveau compte Linux et nouvelle IP publique.
-
-Les tests automatiques couvrent des PKI jetables, SQLite, les archives dangereuses,
-la preservation des secrets/certificats et les substitutions de fichiers en repertoires
-temporaires. Ils ne prouvent pas le fonctionnement de systemd, SSH, tun0 ou d'un hebergeur.
-Un serveur ou une CA dont les certificats sont expires, des schemas UI differents, des
-chemins personnalises ou une autre version de radio-vpn sont refuses/non pris en charge.
-Les clients avec cle privee chiffree conservent leur mot de passe ; l'outil ne le connait pas.
-
-La sauvegarde ne peut contenir les modifications posterieures a sa creation : une ancienne
-archive peut perdre des clients ou des revocations recentes. Une empreinte SHA-256 ne
-prouve pas que le VPS source etait sain. Conserver plusieurs generations et choisir un point fiable.
-
-## Licence et tests
-
-[MIT](LICENSE). Outil compagnon de Radio Bonheur pour radio-vpn, derive de
-[d3vilh/openvpn-ui](https://github.com/d3vilh/openvpn-ui) ; attributions conservees.
-Tests : `python3 -B -m unittest discover -s tests -v`.
+[MIT](LICENSE). Outil compagnon de Radio Bonheur pour radio-vpn, dérivé de
+[d3vilh/openvpn-ui](https://github.com/d3vilh/openvpn-ui), avec les attributions conservées.

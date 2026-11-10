@@ -1,29 +1,25 @@
-# Recette de sauvegarde et restauration
+# Check-list de restauration réelle
 
-Sur des machines de test uniquement, sans reutiliser une PKI de production dans un reseau actif :
+Les commandes sont dans le [guide de restauration](restoration.md). Utiliser un VPS et des
+clients de test, sans exposer une copie de la PKI de production sur un réseau actif.
 
-1. Installer radio-vpn radio-v2.4, creer deux clients a IP fixes, revoquer l'un d'eux.
-2. Noter les empreintes CA/serveur/client, numeros de serie, IP fixes et entree R.
-3. Lancer une sauvegarde pendant qu'un client valide est connecte : verifier qu'il reste connecte.
-4. Recuperer depuis DSM par le compte restreint. Tester un refus de shell, de transfert de ports,
-   de lecture arbitraire et d'ecriture. Verifier SHA-256, gzip et les permissions des archives non chiffrees.
-5. Tester disque plein, archive corrompue, transfert interrompu et NAS temporairement indisponible :
-   aucune archive incomplete ne doit etre visible, les anciennes doivent rester utilisables.
-6. Preparer un autre VPS Debian 13 avec radio-vpn ; suivre le README de radio-vpn-restore.
-7. Comparer les empreintes et IP fixes. La CRL peut avoir une nouvelle date, mais l'entree R reste presente.
-8. Adapter `remote` sur le client de test si l'IP publique change ; verifier la connexion avec son certificat initial.
-9. Verifier que le certificat revoque est refuse. Creer un nouveau client, lui affecter une IP et verifier sa connexion.
-10. Tester SSH, UI via tunnel et VPN, nftables, timers, puis redemarrer le VPS de test et recommencer les controles.
-11. Simuler un echec apres remplacement : verifier le retour arriere des donnees et des services et la preservation SSH.
+- Debian 13 AMD64 préparé complètement avec radio-vpn radio-v2.4 ; nouvelle connexion SSH par clé validée.
+- Archive et SHA-256 récupérés depuis le bon dossier NAS, sans dépendre du VPN à reconstruire.
+- Installation de Git et clonage réalisés avec le compte Linux du nouveau VPS.
+- Archive standard reconnue même sans age ; aucune demande de clé de déchiffrement.
+- Confirmation de l'IP publique et du compte existant ; réseau restauré conforme et sans conflit de routes.
+- Même empreinte CA, même certificat/série d'un ancien client, même IP fixe.
+- Connexion de cet ancien client avec son profil initial, après changement de `remote` si nécessaire.
+- Entrée de révocation conservée et essai d'un profil de test révoqué effectivement refusé.
+- Création et connexion d'un nouveau client de test, sans collision de numéros de série ou d'IP.
+- UI accessible par VPN ou tunnel SSH, avec les identifiants de la base sauvegardée.
+- SSH, clés d'hôte et pare-feu de destination préservés ; nouvelle connexion SSH encore possible.
+- Services, timers, réseau et clients contrôlés une nouvelle fois après redémarrage.
+- Sauvegarde et collecte réinstallées/reconfigurées pour le nouveau VPS ; cycle automatique vérifié.
+- Sur machine de test seulement : erreur après substitution, retour automatique à l'état précédent vérifié.
+- Séparément, [archive age](encryption.md) : bonne clé acceptée, mauvaise clé/fichier altéré refusés,
+  secours chiffré lisible avec la même clé, copie temporaire de clé retirée après validation.
 
-Ne pas faire fonctionner deux serveurs issus de la meme PKI comme deux autorites independantes :
-leurs index/serials pourraient diverger. Pour une bascule planifiee, arreter les ecritures sur
-l'ancien serveur, faire une derniere sauvegarde, puis le maintenir hors service apres bascule.
-
-Ces controles sur VPS/DSM restent a realiser. Les fixtures automatiques ne valident pas
-les reseaux d'un hebergeur, la console, le redemarrage reel ou une restauration de production.
-
-Tester les deux modes : ENCRYPT=false sans age, puis ENCRYPT=true avec une cle generee
-hors du VPS. Verifier la collecte et la retention d'un ensemble mixte, la detection du
-format a la restauration, le refus d'une mauvaise cle et le chiffrement du secours
-lorsque l'archive restauree est chiffree. Le mode standard ne doit jamais demander de cle.
+Ces contrôles nécessitent de vrais VPS et le DSM utilisé. Les fixtures et simulations de
+tests ne valident ni les services d'un hébergeur, ni les ACL/notifications/horaires DSM.
+Conserver les sauvegardes d'origine tant que cette recette n'est pas terminée.
