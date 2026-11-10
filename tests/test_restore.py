@@ -85,17 +85,95 @@ class Restore(unittest.TestCase):
         self.assertEqual(protected.read_text(), "destination-ssh\n")
         self.assertEqual((target / "etc/ssh/ssh_host_ed25519_key").read_text(), "destination-host-key\n")
         self.assertEqual((target / "etc/nftables.conf").read_text(), "destination-firewall\n")
-        restore_data.replace(self.folder / "previous", target)
+        restore_data.replace(self.folder / "previous", target, rollback=True)
         self.assertIn("remote 198.51.100.10", (target / "etc/openvpn/config/client.conf").read_text())
 
-    def test_reject_wrong_version_ip_and_schema(self):
+    def test_reject_invalid_ip_and_schema(self):
         for ip in ("::1", "127.0.0.1", "10.0.0.1", "invalid"):
             with self.assertRaises(ValueError): restore_data.update(self.root, ip, "alice")
         with sqlite3.connect(self.root / "opt/openvpn-ui-runtime/db/data.db") as db:
             db.execute("DROP TABLE ov_client_config")
         with self.assertRaises(ValueError): restore_data.update(self.root, "8.8.4.4", "alice")
-        p = self.root / "etc/radio-vpn-deployed"; p.write_text(p.read_text().replace("radio-v2.4", "unknown"))
-        with self.assertRaises(ValueError): archive.preflight(self.root)
+
+    def test_v21_archive_restored_to_v24_preserves_identity_and_destination(self):
+        deployed = self.root / "etc/radio-vpn-deployed"
+        deployed.write_text(deployed.read_text().replace("radio-v2.4", "radio-v2.1"))
+        origin = archive.metadata(self.root)
+        for name in archive.OPTIONAL_FILES: (self.root / name).unlink()
+        source = self.folder / "v21.tar.gz"; pack_fixture(self.root, source)
+        restore_data.unpack(source, self.folder / "unpacked")
+        payload = self.folder / "unpacked/payload"
+        target = self.folder / "target"; target.mkdir(); installation(target, archive)
+        protected = ("etc/ssh/sshd_config", "etc/ssh/sshd_config.d/00-radio.conf", "etc/nftables.conf",
+                     "etc/sysctl.d/99-radio-disable-ipv6.conf", *restore_data.OPTIONAL_REPLACE)
+        before = {name: (target / name).read_bytes() for name in protected}
+        pki = {p.relative_to(payload).as_posix(): p.read_bytes() for p in (payload / "usr/share/easy-rsa/pki").rglob("*") if p.is_file()}
+        restore_data.update(payload, "8.8.4.4", "ops-admin_2")
+        restore_data.compatible(payload, target)
+        self.assertEqual(before, {name: (target / name).read_bytes() for name in protected})
+        restore_data.replace(payload, target)
+        self.assertEqual(before, {name: (target / name).read_bytes() for name in protected})
+        for name, content in pki.items(): self.assertEqual((target / name).read_bytes(), content)
+        self.assertFalse((target / "usr/share/easy-rsa/pki/crlnumber").exists())
+        restored = archive.metadata(target)
+        for key, value in origin.items():
+            if key != "public_ip": self.assertEqual(restored[key], value)
+        self.assertEqual(restored["public_ip"], "8.8.4.4")
+        self.assertEqual(deployed.read_text().splitlines()[0], "release_tag=radio-v2.1")
+
+    def test_optional_files_created_then_removed_on_rollback(self):
+        target = self.folder / "target"; target.mkdir(); installation(target, archive)
+        for name in restore_data.OPTIONAL_REPLACE: (target / name).unlink()
+        previous = self.folder / "previous"
+        restore_data.preserve(target, previous)
+        restore_data.replace(self.root, target)
+        self.assertTrue(all((target / name).is_file() for name in restore_data.OPTIONAL_REPLACE))
+        restore_data.replace(previous, target, rollback=True)
+        self.assertTrue(all(not (target / name).exists() for name in restore_data.OPTIONAL_REPLACE))
+
+    def test_missing_component_or_destination_parent_refused_before_replacement(self):
+        target = self.folder / "target"; target.mkdir(); installation(target, archive)
+        original = (target / "etc/radio-vpn-deployed").read_bytes()
+        missing = self.root / "etc/systemd/system/radio-renew-crl.timer"
+        missing.unlink()
+        with self.assertRaises(ValueError): restore_data.replace(self.root, target)
+        self.assertEqual((target / "etc/radio-vpn-deployed").read_bytes(), original)
+        missing.write_text("fixture\n")
+        # Le dernier parent cible est verifie avant meme la copie du premier chemin.
+        (target / "etc/systemd/journald.conf.d/99-radio-limits.conf").unlink()
+        (target / "etc/systemd/journald.conf.d").rmdir()
+        (target / "etc/systemd/journald.conf.d").symlink_to(self.folder)
+        with self.assertRaises(ValueError): restore_data.compatible(self.root, target)
+        self.assertEqual((target / "etc/radio-vpn-deployed").read_bytes(), original)
+
+    def test_network_mismatch_and_client_key_mismatch_refused(self):
+        target = self.folder / "target"; target.mkdir(); installation(target, archive)
+        deployed = target / "etc/radio-vpn-deployed"
+        original = deployed.read_bytes()
+        deployed.write_text(deployed.read_text().replace("10.3.0.0/16", "10.4.0.0/16"))
+        with self.assertRaisesRegex(ValueError, "Reseaux VPN differents"):
+            restore_data.compatible(self.root, target)
+        deployed.write_bytes(original)
+        pki = self.root / "usr/share/easy-rsa/pki"
+        (pki / "private/client.key").write_bytes((pki / "private/server.key").read_bytes())
+        with self.assertRaisesRegex(ValueError, "Cle client"):
+            restore_data.compatible(self.root, target)
+        self.assertEqual(deployed.read_bytes(), original)
+
+    def test_missing_revocation_and_duplicate_fixed_ip_refused(self):
+        index = self.root / "usr/share/easy-rsa/pki/index.txt"
+        original = index.read_text()
+        index.write_text(original.replace("\t03\t", "\t09\t"))
+        with self.assertRaisesRegex(ValueError, "revocation"):
+            restore_data.validate(self.root)
+        # Deux certificats valides de la CA partagent une IP : le controle doit refuser.
+        index.write_text(original.replace("R\t491231235959Z\t240101000000Z\t03\tunknown\t/CN=revoked",
+                                          "V\t491231235959Z\t\t03\tunknown\t/CN=revoked/name=revoked/LocalIP=10.3.0.10"))
+        pki = self.root / "usr/share/easy-rsa/pki"
+        archive.command("openssl", "ca", "-gencrl", "-config", str(pki / "openssl.cnf"), "-out", str(pki / "crl.pem"))
+        (self.root / "etc/openvpn/staticclients/revoked").write_text("ifconfig-push 10.3.0.10 255.255.0.0\n")
+        with self.assertRaisesRegex(ValueError, "CCD incompatible"):
+            restore_data.validate(self.root)
 
     def test_reject_dangerous_symlink_before_extraction(self):
         config = self.root / "opt/openvpn-ui-runtime/conf/app.conf"
@@ -111,11 +189,13 @@ class Orchestration(unittest.TestCase):
         self.assertNotIn("apt-get", script)
         self.assertNotIn("init_all", script)
         self.assertNotIn("systemctl reload ssh", script)
-        self.assertIn('replace "$WORK/previous" /', script)
+        self.assertIn('rollback "$WORK/previous" /', script)
         self.assertLess(script.index('unpack "$WORK/backup.tar.gz"'), script.index('CHANGED=true'))
         self.assertLess(script.index('gzip -t "$WORK/previous.tar.gz"'), script.index('CHANGED=true'))
         self.assertLess(script.index('gzip -t "$WORK/backup.tar.gz"'), script.index('unpack "$WORK/backup.tar.gz"'))
         self.assertIn('sha256sum "${rescue##*/}"', script)
+        self.assertLess(script.index('compatible "$payload" /'), script.index('STOPPED=true'))
+        self.assertLess(script.index('if $check_only; then'), script.index('install -d -m 700 /var/lib'))
 
 
 if __name__ == "__main__": unittest.main()

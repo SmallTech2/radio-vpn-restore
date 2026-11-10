@@ -31,20 +31,25 @@ import sys
 import tarfile
 
 TREES = ("usr/share/easy-rsa", "etc/openvpn", "opt/openvpn-ui-runtime", "opt/scripts")
-
-FILES = (
+REQUIRED_FILES = (
     "etc/openvpn-ui.env", "etc/radio-vpn-deployed",
     "etc/systemd/system/openvpn-ui.service",
     "etc/systemd/system/radio-renew-crl.service", "etc/systemd/system/radio-renew-crl.timer",
-    "usr/local/sbin/radio-renew-crl", "usr/local/bin/radio-secure-ssh",
+    "usr/local/sbin/radio-renew-crl",
+)
+OPTIONAL_FILES = (
+    "usr/local/bin/radio-secure-ssh",
     "etc/nftables.conf", "etc/sysctl.d/99-radio-disable-ipv6.conf",
     "etc/logrotate.d/openvpn", "etc/systemd/journald.conf.d/99-radio-limits.conf",
     "etc/ssh/sshd_config", "etc/ssh/sshd_config.d/00-radio.conf",
 )
-
+FILES = REQUIRED_FILES + OPTIONAL_FILES
+CORE_FILES = ("etc/openvpn/server.conf", "etc/openvpn/config/client.conf")
+PKI_FILES = ("ca.crt", "private/ca.key", "private/server.key", "issued/server.crt", "ta.key",
+             "dh.pem", "index.txt", "serial", "vars", "crl.pem")
 ALLOWED = TREES + FILES
-
 ID = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
+
 
 def metadata(root):
     values = {}
@@ -52,8 +57,8 @@ def metadata(root):
         key, separator, value = line.partition("=")
         if separator:
             values[key] = value
-    if values.get("release_tag") != "radio-v2.4":
-        raise ValueError("Seule la reference radio-v2.4 est prise en charge.")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", values.get("release_tag", "")):
+        raise ValueError("Nom de version absent ou invalide dans les metadonnees.")
     for key in ("release_source_commit", "binary_source_commit"):
         if not re.fullmatch(r"[a-f0-9]{40}", values.get(key, "")):
             raise ValueError("Metadonnees de version invalides.")
@@ -68,9 +73,16 @@ def metadata(root):
 
 def preflight(root):
     metadata(root)
-    for name in TREES + FILES:
-        if not (root / name).exists():
+    for name in TREES + ("usr/share/easy-rsa/pki", "etc/openvpn/staticclients"):
+        if not (root / name).is_dir():
             raise ValueError("Element radio-vpn manquant : " + name)
+    for name in REQUIRED_FILES + CORE_FILES + tuple("usr/share/easy-rsa/pki/" + p for p in PKI_FILES):
+        if not (root / name).is_file():
+            raise ValueError("Fichier indispensable manquant : " + name)
+    for name in OPTIONAL_FILES:
+        path = root / name
+        if (path.exists() or path.is_symlink()) and not path.is_file():
+            raise ValueError("Fichier facultatif present mais invalide : " + name)
     runtime = root / "opt/openvpn-ui-runtime"
     for name in ("openvpn-ui", "conf/app.conf", "db/data.db"):
         if not (runtime / name).is_file() or (runtime / name).is_symlink():
@@ -84,6 +96,7 @@ def preflight(root):
     if not link.is_symlink() or os.readlink(link) != "/usr/share/easy-rsa/pki":
         raise ValueError("Lien PKI radio-vpn inattendu.")
 
+
 def command(*args):
     result = subprocess.run(args, capture_output=True)
     if result.returncode:
@@ -92,7 +105,7 @@ def command(*args):
 
 def validate_pki(payload):
     pki = payload / "usr/share/easy-rsa/pki"
-    for name in ("ca.crt", "private/ca.key", "private/server.key", "issued/server.crt", "ta.key", "dh.pem", "index.txt", "serial", "crlnumber", "vars", "crl.pem"):
+    for name in PKI_FILES:
         if not (pki / name).is_file():
             raise ValueError("PKI incomplete : " + name)
     for name in ("ca", "server"):
@@ -106,6 +119,8 @@ def validate_pki(payload):
     crl = command("openssl", "crl", "-in", str(pki / "crl.pem"), "-text", "-noout").decode()
     revoked = {int(s.replace(":", ""), 16) for s in re.findall(r"Serial Number:\s*([0-9a-fA-F:]+)", crl)}
     records = []
+    addresses = set()
+    network = ipaddress.IPv4Network(metadata(payload)["network"])
     for line in (pki / "index.txt").read_text().splitlines():
         fields = line.split("\t")
         if len(fields) != 6 or fields[0] not in ("V", "R", "E"):
@@ -121,11 +136,26 @@ def validate_pki(payload):
             serial = command("openssl", "x509", "-in", str(cert), "-serial", "-noout").decode().strip().partition("=")[2]
             if int(serial, 16) != int(fields[3], 16) or not (pki / f"private/{name}.key").is_file():
                 raise ValueError("Certificat valide incomplet ou serie incoherente.")
+            # Une cle presente ne suffit pas : verifier sa correspondance et sa CA.
+            public = command("openssl", "x509", "-in", str(cert), "-pubkey", "-noout")
+            private = command("openssl", "pkey", "-in", str(pki / f"private/{name}.key"),
+                              "-passin", "pass:", "-pubout")
+            if public != private:
+                raise ValueError("Cle client et certificat incompatibles.")
+            command("openssl", "verify", "-no_check_time", "-CAfile", str(pki / "ca.crt"), str(cert))
             if name != "server":
                 ccd = payload / f"etc/openvpn/staticclients/{name}"
                 ip = re.search(r"/LocalIP=([^/]+)", fields[5])
                 if not ip or not ccd.is_file() or not re.search(r"^ifconfig-push\s+" + re.escape(ip[1]) + r"\s", ccd.read_text(), re.M):
                     raise ValueError("Certificat et IP fixe incoherents.")
+                entries = re.findall(r"^ifconfig-push\s+(\S+)\s+(\S+)\s*$", ccd.read_text(), re.M)
+                if len(entries) != 1:
+                    raise ValueError("Adresse CCD absente ou ambigue.")
+                address = ipaddress.IPv4Address(entries[0][0])
+                if (address not in network or address in (network.network_address, network.network_address + 1, network.broadcast_address)
+                        or entries[0][1] != str(network.netmask) or address in addresses):
+                    raise ValueError("Adresse ou masque CCD incompatible avec le reseau VPN.")
+                addresses.add(address)
         records.append(fields[3].upper())
     if len(records) != len(set(records)):
         raise ValueError("Serie dupliquee dans l index.")

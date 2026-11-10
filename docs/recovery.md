@@ -3,7 +3,9 @@
 ## Avant le remplacement
 
 **Nouveau VPS — administrateur Linux :** si le script refuse l'archive, conserver son message
-d'erreur. Vérifier version radio-v2.4, intégrité, espace disque et installation complète :
+d'erreur. Relancer `sudo bash restore.sh --check CHEMIN_ARCHIVE` avec le véritable chemin
+de votre archive. Vérifier les composants signalés, l’intégrité, l’espace disque et
+l’installation complète ; ne pas changer artificiellement les métadonnées de version :
 
 ```bash
 sudo cat /etc/radio-vpn-deployed
@@ -54,7 +56,7 @@ sudo mkdir -m 700 "$RESCUE_DIR/state"
 sudo tar -xpf "$SECOURS_TAR" --same-owner -C "$RESCUE_DIR/state"
 cd "$HOME/radio-vpn-restore"
 sudo systemctl stop openvpn-ui.service openvpn@server.service radio-renew-crl.timer radio-renew-crl.service
-sudo python3 scripts/restore_data.py replace "$RESCUE_DIR/state" /
+sudo python3 scripts/restore_data.py rollback "$RESCUE_DIR/state" /
 sudo systemctl daemon-reload
 sudo systemctl start radio-renew-crl.service
 sudo systemctl start openvpn@server.service openvpn-ui.service radio-renew-crl.timer

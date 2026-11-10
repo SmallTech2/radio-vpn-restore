@@ -3,7 +3,7 @@
 Les commandes sont dans le [guide de restauration](restoration.md). Utiliser un VPS et des
 clients de test, sans exposer une copie de la PKI de production sur un réseau actif.
 
-- Debian 13 AMD64 préparé complètement avec radio-vpn radio-v2.4 ; nouvelle connexion SSH par clé validée.
+- Debian 13 AMD64 préparé complètement avec radio-vpn, avec le réseau VPN de la sauvegarde ; nouvelle connexion SSH par clé validée.
 - Archive et SHA-256 récupérés depuis le bon dossier NAS, sans dépendre du VPN à reconstruire.
 - Installation de Git et clonage réalisés avec le compte Linux du nouveau VPS.
 - Archive standard reconnue même sans age ; aucune demande de clé de déchiffrement.
@@ -23,3 +23,21 @@ clients de test, sans exposer une copie de la PKI de production sur un réseau a
 Ces contrôles nécessitent de vrais VPS et le DSM utilisé. Les fixtures et simulations de
 tests ne valident ni les services d'un hébergeur, ni les ACL/notifications/horaires DSM.
 Conserver les sauvegardes d'origine tant que cette recette n'est pas terminée.
+
+## Compatibilité et contrôle sans remplacement
+
+Les tests couvrent une source radio-v2.1 sans fichiers facultatifs ni `crlnumber`, une
+destination radio-v2.4, la conservation de la PKI et des versions/commits, ainsi que
+l’absence de remplacement des configurations SSH, nftables et IPv6 de destination.
+Les fichiers de logs absents de l’archive laissent ceux du nouveau VPS en place.
+Le retour arrière rétablit aussi l’absence initiale d’un fichier facultatif.
+
+Les refus testés comprennent : clé client incompatible, révocation manquante dans la
+CRL, IP fixe dupliquée, réseau différent, composant obligatoire manquant, schéma SQLite
+incompatible et parent de destination symbolique. Une simulation de l’assistant vérifie
+que `--check`, réussi ou en échec, ne modifie aucun service ni configuration.
+
+Sur le VPS de test, exécuter `sudo bash restore.sh --check "$ARCHIVE"`, confirmer l’IP
+et le compte, puis vérifier les services et données inchangés. Restaurer ensuite et
+suivre les essais client valide/révoqué et SSH. Les tests automatisés ne valident pas
+une restauration réelle ni le fonctionnement après redémarrage.

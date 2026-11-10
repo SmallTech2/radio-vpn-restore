@@ -47,7 +47,9 @@ sudo bash "$HOME/deploy-vps.sh"
 ```
 
 En session root, omettre `sudo` dans les commandes de ce guide. Le tag figé `radio-v2.4`
-correspond à la version reconnue par les outils ; ne pas remplacer cette URL par `main`.
+est un exemple reproductible pour préparer la destination, pas une obligation de
+version pour la sauvegarde. Ne pas remplacer cette URL par `main`. La compatibilité
+repose sur les composants présents, y compris pour une source radio-v2.1.
 
 Le premier passage met Debian à niveau et demande confirmation avant redémarrage.
 **Attendre le redémarrage, rouvrir une session avec le même compte initial**, puis :
@@ -58,9 +60,9 @@ sudo bash "$HOME/deploy-vps.sh"
 
 Le script ne reprend pas automatiquement. Ne pas télécharger une nouvelle copie entre
 ces deux passages. Il demande l'IPv4 publique, le réseau VPN, le compte Linux à créer,
-sa clé publique ED25519, l'identité PKI et les mots de passe. Choisir de préférence le
-même réseau VPN que la sauvegarde ; après restauration, le réseau de la sauvegarde sera
-réappliqué et les conflits avec les routes du nouveau VPS seront refusés.
+sa clé publique ED25519, l'identité PKI et les mots de passe. Choisir impérativement le
+même réseau VPN que la sauvegarde : le pare-feu et les réglages réseau du nouveau VPS
+sont conservés. Un réseau différent ou un conflit de routes bloque le contrôle préalable.
 
 La CA créée ici est **provisoire** : ne pas créer/distribuer de clients sur cette installation.
 Le mot de passe Linux choisi reste celui de la console de secours. Le compte UI et son
@@ -84,10 +86,32 @@ chmod 700 "$HOME/sauvegardes-radio"
 printf 'Dossier de réception réel : %s\n' "$HOME/sauvegardes-radio"
 ```
 
-La version doit être `radio-v2.4` et les services actifs. Ne poursuivre qu'après une
+Les services doivent être actifs et les composants radio-vpn complets ; le numéro de
+version seul ne détermine pas la compatibilité. Ne poursuivre qu'après une
 installation complète ; une configuration partielle ne constitue pas le prérequis attendu.
 
 ## 3. Récupérer une archive du NAS
+
+### Avec Active Backup for Business
+
+**NAS — opérateur ABB :** ouvrir la tâche du VPS et le point voulu dans le navigateur
+ABB de restauration. Télécharger le dossier daté contenant `backup.tar.gz` et `SHA256SUMS`.
+Ne pas restaurer ces fichiers vers le VPS source. Le compte DSM et le stockage sont ceux
+de la tâche ABB ; ils ne sont pas nécessairement ceux du collecteur personnalisé.
+
+**Poste d’administration — Bash, dans le dossier téléchargé :**
+
+```bash
+sha256sum -c SHA256SUMS
+cp SHA256SUMS backup.tar.gz.sha256
+```
+
+Sous Windows sans Bash, faire une copie de `SHA256SUMS` nommée `backup.tar.gz.sha256`
+dans l’Explorateur. Ce sont les mêmes empreintes ; le contrôle sera fait sur le nouveau VPS.
+Conserver le nom `backup.tar.gz` et transférer les deux fichiers selon les blocs ci-dessous.
+Le contenu de l’archive peut provenir de radio-v2.1 ; sa version originale reste conservée.
+
+### Avec le collecteur personnalisé
 
 **Poste d'administration — navigateur DSM, compte NAS `vpnbackup` :**
 
@@ -169,13 +193,34 @@ git clone https://github.com/SmallTech2/radio-vpn-restore.git
 cd "$HOME/radio-vpn-restore"
 git rev-parse HEAD
 printf 'Archive à indiquer au script : %s\n' "$ARCHIVE"
-sudo bash restore.sh
+sudo bash restore.sh --check "$ARCHIVE"
 ```
 
 Noter le commit utilisé. Si ce dépôt est déjà présent, vérifier `git status` puis utiliser
 `git pull --ff-only` dans son dossier propre, sans le cloner par-dessus. Aucun paquet age
-n'est demandé pour une archive standard. Python, OpenSSL, nftables, curl et logrotate
-proviennent de l'installation radio-vpn préalable.
+n'est demandé pour une archive standard. Python, OpenSSL, nftables et curl
+proviennent de l'installation radio-vpn préalable. Logrotate n'est requis que si une
+configuration de rotation est présente dans la sauvegarde ou sur la destination.
+
+Le contrôle `--check` demande l’IPv4 publique et le compte existant, puis s’arrête avec
+« Controle de compatibilite reussi » sans remplacement ni arrêt de service. Seule une
+copie de travail privée sous `/tmp` est modifiée puis supprimée. Il vérifie les chemins,
+la PKI, ses clés et signatures, les révocations, les CCD/IP fixes, SQLite et son schéma,
+la configuration UI/OpenVPN, le réseau de destination, les routes, SSH et nftables.
+
+`crlnumber`, les références SSH/nftables/IPv6 et les configurations de logs peuvent être
+absents de la sauvegarde. Les fichiers essentiels, dont `index.txt` et `crl.pem`, restent
+obligatoires. Les versions et commits d’origine ne sont pas remplacés par ceux du nouveau VPS.
+
+**Uniquement après réussite du contrôle, même compte et même dépôt :**
+
+```bash
+sudo bash restore.sh
+```
+
+La restauration repose sur les mêmes contrôles et les répète. Elle ne transforme pas
+un contrôle statique en garantie de fonctionnement réel : les étapes client/SSH ci-dessous
+restent nécessaires. Si l’environnement change entre les deux commandes, refaire le contrôle.
 
 ## 5. Répondre à l'assistant
 
@@ -190,7 +235,8 @@ proviennent de l'installation radio-vpn préalable.
 Le format est reconnu par le contenu. Une `.tar.gz` ne déclenche aucune demande de clé.
 Les vérifications gzip, empreintes internes, chemins, permissions, liens, SQLite, PKI,
 révocations, IP fixes et routes précèdent la confirmation et le remplacement des données.
-Un manque d'espace, une version différente ou un schéma personnalisé peuvent provoquer un refus.
+Un manque d’espace, un composant manquant, un réseau différent ou un schéma incompatible
+peuvent provoquer un refus ; un numéro de version différent ne suffit pas à bloquer.
 
 Les accès SSH, clés d'hôte, mot de passe Linux, pare-feu nftables et réglages réseau du
 nouveau VPS sont conservés. Les paramètres SSH/réseau du serveur sauvegardé ne sont pas
@@ -202,7 +248,8 @@ interrompu pendant la restauration. La CRL est renouvelée, **pas la CA ni les c
 **Nouveau VPS — administrateur :**
 
 ```bash
-sudo systemctl is-active ssh nftables openvpn@server.service openvpn-ui.service radio-renew-crl.timer logrotate.timer
+sudo systemctl is-active ssh nftables openvpn@server.service openvpn-ui.service radio-renew-crl.timer
+if [ -f /etc/logrotate.d/openvpn ]; then sudo systemctl is-active logrotate.timer; fi
 sudo journalctl -u openvpn@server.service -u openvpn-ui.service -n 80 --no-pager
 ip -j -4 address show dev tun0
 sudo ss -lunp
@@ -218,8 +265,8 @@ avec le compte choisi avant de fermer celles conservées pendant l'intervention.
 
 **Poste d'administration :** accéder à OpenVPN UI par votre tunnel SSH ou par le VPN.
 Utiliser les identifiants Web du serveur sauvegardé. Vérifier la liste des clients et IP fixes.
-Les certificats révoqués sont masqués dans la liste principale ; leur absence visuelle ne
-prouve donc pas à elle seule que leur historique et leur refus fonctionnent.
+Selon l’interface restaurée, les certificats révoqués peuvent être masqués dans la liste
+principale ; l’affichage seul ne prouve pas que leur historique et leur refus fonctionnent.
 
 ## 7. Vérifier certificats, IP fixes et révocations
 
@@ -279,11 +326,15 @@ commandes de l'étape 6, les essais client valide/révoqué et la vérification 
 connexion SSH. Contrôler aussi :
 
 ```bash
-sudo systemctl is-enabled openvpn@server.service openvpn-ui.service radio-renew-crl.timer logrotate.timer
+sudo systemctl is-enabled openvpn@server.service openvpn-ui.service radio-renew-crl.timer
+if [ -f /etc/logrotate.d/openvpn ]; then sudo systemctl is-enabled logrotate.timer; fi
 systemctl list-timers --all radio-renew-crl.timer logrotate.timer
 sudo nft list ruleset
 sysctl net.ipv6.conf.all.disable_ipv6 net.ipv6.conf.default.disable_ipv6
 ```
+
+Les paramètres IPv6 contrôlés sont ceux de la destination. Une sauvegarde sans
+configuration IPv6 ou de logs n’ajoute pas ces fonctions à une ancienne installation.
 
 Réinstaller ensuite `radio-vpn-backup` en suivant son
 [guide](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/installation.md).

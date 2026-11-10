@@ -72,7 +72,7 @@ cleanup(){
   if $CHANGED; then
     echo 'Echec : retour aux donnees precedentes ; SSH et nftables ne sont pas modifies.' >&2
     if systemctl stop openvpn-ui.service openvpn@server.service radio-renew-crl.timer &&
-       python3 "$BASE/scripts/restore_data.py" replace "$WORK/previous" / && systemctl daemon-reload; then
+       python3 "$BASE/scripts/restore_data.py" rollback "$WORK/previous" / && systemctl daemon-reload; then
       resume_old || echo 'Retour des services en echec : utiliser la sauvegarde de secours indiquee.' >&2
     else
       echo 'Retour arriere incomplet : conserver la session SSH et utiliser la sauvegarde de secours.' >&2
@@ -84,24 +84,30 @@ cleanup(){
   exit "$code"
 }
 main(){
-  [[ $EUID -eq 0 && $# == 0 && -t 0 ]] || die 'Usage dans un terminal : sudo bash restore.sh'
+  local check_only=false archive=''
+  if [[ $# == 2 && $1 == --check ]]; then
+    check_only=true; archive=$2
+  elif [[ $# != 0 ]]; then
+    die 'Usage : sudo bash restore.sh [--check ARCHIVE]'
+  fi
+  [[ $EUID -eq 0 && -t 0 ]] || die 'Executer avec sudo dans un terminal.'
   . /etc/os-release
   [[ $ID == debian && $VERSION_ID == 13 && $(uname -m) == x86_64 ]] || die 'Debian 13 AMD64 requis.'
-  for tool in python3 openssl ip nft logrotate curl; do command -v "$tool" >/dev/null || die "Commande manquante : $tool. Installer les prerequis du README."; done
+  for tool in python3 openssl ip nft curl flock; do command -v "$tool" >/dev/null || die "Commande manquante : $tool. Installer les prerequis du README."; done
   python3 "$BASE/scripts/restore_data.py" preflight /
   /usr/sbin/sshd -t
   systemctl is-active --quiet ssh || die 'SSH inactif.'
   systemctl is-active --quiet nftables || die 'Pare-feu nftables inactif.'
   nft -c -f /etc/nftables.conf
-  local archive public_ip detected admin answer home
-  read -r -p 'Chemin de la sauvegarde (.tar.gz ou .tar.gz.age) : ' archive </dev/tty
+  local public_ip detected admin answer home
+  if [[ -z "$archive" ]]; then
+    read -r -p 'Chemin de la sauvegarde (.tar.gz ou .tar.gz.age) : ' archive </dev/tty
+  fi
   [[ -f "$archive" && ! -L "$archive" ]] || die 'Archive locale reguliere requise.'
-  install -d -m 700 /var/lib/radio-vpn-restore /var/lib/radio-vpn-backup
-  exec 9>/var/lib/radio-vpn-backup/backup.lock
-  flock -n 9 || die 'Sauvegarde ou restauration deja active.'
   trap cleanup EXIT
   trap 'exit 1' HUP INT TERM
-  WORK=$(mktemp -d /var/lib/radio-vpn-restore/.work.XXXXXXXX)
+  # Le controle seul ne cree que sa copie de travail privee, sans modifier la destination.
+  WORK=$(mktemp -d /tmp/radio-vpn-restore.XXXXXXXX)
   echo 'Verification de l archive avant remplacement...'
   prepare_archive "$archive"
   python3 "$BASE/scripts/restore_data.py" unpack "$WORK/backup.tar.gz" "$WORK/restore"
@@ -125,14 +131,31 @@ main(){
   [[ -s "$home/.ssh/authorized_keys" ]] || die 'Cle SSH du nouveau compte absente.'
   /usr/sbin/sshd -T -C "user=$admin,host=localhost,addr=127.0.0.1" | grep -qx 'pubkeyauthentication yes' || die 'Acces SSH par cle non autorise.'
   python3 "$BASE/scripts/restore_data.py" update "$payload" "$public_ip" "$admin"
-  python3 "$BASE/scripts/restore_data.py" validate "$payload"
+  python3 "$BASE/scripts/restore_data.py" compatible "$payload" /
   python3 "$BASE/scripts/restore_data.py" routes "$payload"
+  if [[ -f "$payload/etc/logrotate.d/openvpn" || -f /etc/logrotate.d/openvpn ]]; then
+    command -v logrotate >/dev/null || die 'Configuration de rotation presente : installer logrotate avant restauration.'
+    systemctl cat logrotate.timer >/dev/null || die 'Unite logrotate.timer absente.'
+    if [[ -f "$payload/etc/logrotate.d/openvpn" ]]; then
+      logrotate --debug "$payload/etc/logrotate.d/openvpn"
+    else
+      logrotate --debug /etc/logrotate.d/openvpn
+    fi
+  fi
+  if $check_only; then
+    echo 'Controle de compatibilite reussi. Aucun service arrete, aucune configuration remplacee.'
+    echo 'La restauration repetera ces controles ; le fonctionnement reel reste a valider.'
+    return 0
+  fi
   printf '\nDestination : %s\nCompte conserve : %s\n' "$public_ip" "$admin"
   echo 'La PKI, les clients, les IP fixes et la base UI seront remplaces. Les sessions VPN seront interrompues.'
   echo 'Les acces SSH, cles d hote, mots de passe Linux, nftables et parametres reseau du nouveau VPS sont conserves.'
   echo 'Seuls des profils clients stockes sur le serveur sont adaptes ; les copies deja distribuees restent a modifier si l IP change.'
   read -r -p 'Restaurer ? Taper RESTAURER : ' answer </dev/tty
   [[ "$answer" == RESTAURER ]] || { echo 'Annule : aucun remplacement.'; return 0; }
+  install -d -m 700 /var/lib/radio-vpn-restore /var/lib/radio-vpn-backup
+  exec 9>/var/lib/radio-vpn-backup/backup.lock
+  flock -n 9 || die 'Sauvegarde ou restauration deja active.'
   systemctl is-active --quiet openvpn-ui.service && OLD_UI=true
   systemctl is-active --quiet openvpn@server.service && OLD_VPN=true
   systemctl is-active --quiet radio-renew-crl.timer && OLD_TIMER=true
@@ -152,10 +175,11 @@ main(){
   systemctl daemon-reload
   systemctl start radio-renew-crl.service
   python3 "$BASE/scripts/restore_data.py" validate /
-  logrotate --debug /etc/logrotate.d/openvpn
-  systemctl restart systemd-journald.service
+  [[ ! -f /etc/logrotate.d/openvpn ]] || logrotate --debug /etc/logrotate.d/openvpn
+  [[ ! -f "$payload/etc/systemd/journald.conf.d/99-radio-limits.conf" ]] || systemctl restart systemd-journald.service
   install -d -m 755 /var/log/openvpn
-  systemctl enable --now openvpn@server.service openvpn-ui.service radio-renew-crl.timer logrotate.timer
+  systemctl enable --now openvpn@server.service openvpn-ui.service radio-renew-crl.timer
+  [[ ! -f /etc/logrotate.d/openvpn ]] || systemctl enable --now logrotate.timer
   systemctl is-active --quiet openvpn@server.service
   systemctl is-active --quiet openvpn-ui.service
   python3 "$BASE/scripts/restore_data.py" tun /

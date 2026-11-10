@@ -18,9 +18,9 @@ REPLACE = (
     "usr/share/easy-rsa", "etc/openvpn", "opt/openvpn-ui-runtime", "opt/scripts",
     "etc/openvpn-ui.env", "etc/radio-vpn-deployed", "usr/local/sbin/radio-renew-crl",
     "etc/systemd/system/openvpn-ui.service", "etc/systemd/system/radio-renew-crl.service",
-    "etc/systemd/system/radio-renew-crl.timer", "etc/logrotate.d/openvpn",
-    "etc/systemd/journald.conf.d/99-radio-limits.conf",
+    "etc/systemd/system/radio-renew-crl.timer",
 )
+OPTIONAL_REPLACE = ("etc/logrotate.d/openvpn", "etc/systemd/journald.conf.d/99-radio-limits.conf")
 
 
 def unpack(archive, destination):
@@ -47,27 +47,41 @@ def unpack(archive, destination):
                 os.utime(path, (member.mtime, member.mtime))
     preflight(destination / "payload")
     validate_pki(destination / "payload")
+    if metadata(destination / "payload") != manifest["deployment"]:
+        raise ValueError("Metadonnees du manifeste et du contenu incompatibles.")
     return manifest
 
 
-def replace(source, destination):
-    # Seuls les chemins constants ci-dessus peuvent etre remplaces ; aucun chemin du manifest.
+def replacement_paths(source, destination):
     for name in REPLACE:
+        if not (source / name).exists():
+            raise ValueError("Element de restauration absent : " + name)
+    # Seuls les chemins constants ci-dessus peuvent etre remplaces ; aucun chemin du manifest.
+    for name in REPLACE + OPTIONAL_REPLACE:
         target = destination / name
         for parent in target.parents:
             if parent == destination.parent: break
             if parent.is_symlink(): raise ValueError("Parent symbolique sur la destination.")
+
+
+def replace(source, destination, rollback=False):
+    replacement_paths(source, destination)
+    for name in REPLACE + OPTIONAL_REPLACE:
+        target = destination / name
         item = source / name
-        if not item.exists(): raise ValueError("Element de restauration absent : " + name)
+        if not item.exists() and not rollback:
+            continue  # Conserver la configuration facultative propre a la destination.
         if target.is_symlink() or target.is_file(): target.unlink()
         elif target.is_dir(): shutil.rmtree(target)
+        if not item.exists(): continue  # Retour arriere : retrouver aussi une absence initiale.
         target.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["cp", "-a", str(item), str(target)], check=True)
 
 
 def preserve(root, destination):
     destination.mkdir(mode=0o700)
-    subprocess.run(["cp", "-a", "--parents", *REPLACE, str(destination.resolve())], cwd=root, check=True)
+    paths = REPLACE + tuple(name for name in OPTIONAL_REPLACE if (root / name).exists())
+    subprocess.run(["cp", "-a", "--parents", *paths, str(destination.resolve())], cwd=root, check=True)
 
 
 def update(payload, public_ip, admin):
@@ -106,6 +120,7 @@ def update(payload, public_ip, admin):
 
 
 def validate(payload):
+    preflight(payload)
     validate_pki(payload)
     with sqlite3.connect(f"file:{payload / 'opt/openvpn-ui-runtime/db/data.db'}?mode=ro", uri=True) as db:
         if db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]: raise ValueError("SQLite invalide.")
@@ -113,6 +128,9 @@ def validate(payload):
     subprocess.run(["openssl", "verify", "-CAfile", str(pki / "ca.crt"), str(pki / "issued/server.crt")], check=True, capture_output=True)
     values = metadata(payload)
     network = ipaddress.IPv4Network(values["network"])
+    app = (payload / "opt/openvpn-ui-runtime/conf/app.conf").read_text()
+    matches = re.findall(r'^RadioVpnNetwork\s*=\s*"?([^"\s]+)"?\s*$', app, re.M)
+    if matches != [str(network)]: raise ValueError("Reseau UI incoherent avec les metadonnees.")
     server = (payload / "etc/openvpn/server.conf").read_text()
     required = [r"^dev\s+tun0\s*$", r"^topology\s+subnet\s*$", r"^client-to-client\s*$", r"^ccd-exclusive\s*$",
                 r"^server\s+" + re.escape(str(network.network_address)) + r"\s+" + re.escape(str(network.netmask)) + r"\s+nopool\s*$"]
@@ -126,6 +144,19 @@ def validate(payload):
         if path.startswith("/etc/openvpn/pki/"): alternatives.append(path.removeprefix("/etc/openvpn/"))
         if not re.search(r"^" + re.escape(directive) + r"\s+(?:" + "|".join(map(re.escape, alternatives)) + r")\s*$", server, re.M):
             raise ValueError("Chemin OpenVPN non pris en charge : " + directive)
+
+
+def compatible(payload, destination):
+    preflight(destination)
+    validate(payload)
+    if metadata(payload)["network"] != metadata(destination)["network"]:
+        raise ValueError("Reseaux VPN differents : preparer la destination avec le reseau sauvegarde pour conserver son pare-feu.")
+    network = ipaddress.IPv4Network(metadata(destination)["network"])
+    server = (destination / "etc/openvpn/server.conf").read_text()
+    if not re.search(r"^server\s+" + re.escape(str(network.network_address)) + r"\s+" +
+                     re.escape(str(network.netmask)) + r"\s+nopool\s*$", server, re.M):
+        raise ValueError("Reseau OpenVPN de destination incoherent avec ses metadonnees.")
+    replacement_paths(payload, destination)
 
 
 def routes(payload):
@@ -157,6 +188,8 @@ if __name__ == "__main__":
         elif action == "update": update(pathlib.Path(args[0]), *args[1:])
         elif action == "preserve": preserve(*map(pathlib.Path, args))
         elif action == "replace": replace(*map(pathlib.Path, args))
+        elif action == "rollback": replace(*map(pathlib.Path, args), rollback=True)
+        elif action == "compatible": compatible(*map(pathlib.Path, args))
         elif action == "validate": validate(pathlib.Path(args[0]))
         elif action == "routes": routes(pathlib.Path(args[0]))
         elif action == "tun": tun(pathlib.Path(args[0]))

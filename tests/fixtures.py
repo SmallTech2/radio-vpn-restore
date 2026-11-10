@@ -42,8 +42,7 @@ def installation(root, contract):
         run("openssl", "x509", "-req", "-in", str(pki / f"{name}.csr"), "-CA", str(pki / "ca.crt"), "-CAkey", str(pki / "private/ca.key"), "-set_serial", "0x" + serial, "-days", "20", "-out", str(pki / f"issued/{name}.crt"))
     (pki / "index.txt").write_text("V\t491231235959Z\t\t01\tunknown\t/CN=server\nV\t491231235959Z\t\t02\tunknown\t/CN=client/name=client/LocalIP=10.3.0.10/2FAName=none\nR\t491231235959Z\t240101000000Z\t03\tunknown\t/CN=revoked\n")
     (pki / "serial").write_text("04\n")
-    (pki / "crlnumber").write_text("01\n")
-    (pki / "openssl.cnf").write_text("[ca]\ndefault_ca=fixture\n[fixture]\ndatabase=" + str(pki / "index.txt") + "\ncertificate=" + str(pki / "ca.crt") + "\nprivate_key=" + str(pki / "private/ca.key") + "\ncrlnumber=" + str(pki / "crlnumber") + "\ndefault_md=sha256\ndefault_crl_days=30\n")
+    (pki / "openssl.cnf").write_text("[ca]\ndefault_ca=fixture\n[fixture]\ndatabase=" + str(pki / "index.txt") + "\ncertificate=" + str(pki / "ca.crt") + "\nprivate_key=" + str(pki / "private/ca.key") + "\ndefault_md=sha256\ndefault_crl_days=30\n")
     run("openssl", "ca", "-gencrl", "-config", str(pki / "openssl.cnf"), "-out", str(pki / "crl.pem"))
     for name in ("vars", "dh.pem", "ta.key"):
         (pki / name).write_text("fixture\n")
