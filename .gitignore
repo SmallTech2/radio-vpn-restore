@@ -1,7 +1,6 @@
 __pycache__/
 *.pyc
 .audit-tools/
-*.age
 *.tar.gz
 *.key
 *.pem

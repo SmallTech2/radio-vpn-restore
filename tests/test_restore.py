@@ -113,7 +113,9 @@ class Orchestration(unittest.TestCase):
         self.assertNotIn("systemctl reload ssh", script)
         self.assertIn('replace "$WORK/previous" /', script)
         self.assertLess(script.index('unpack "$WORK/backup.tar.gz"'), script.index('CHANGED=true'))
-        self.assertLess(script.index('age -R "$WORK/recipients"'), script.index('CHANGED=true'))
+        self.assertLess(script.index('gzip -t "$WORK/previous.tar.gz"'), script.index('CHANGED=true'))
+        self.assertLess(script.index('gzip -t "$WORK/backup.tar.gz"'), script.index('unpack "$WORK/backup.tar.gz"'))
+        self.assertIn('sha256sum "${rescue##*/}"', script)
 
 
 if __name__ == "__main__": unittest.main()

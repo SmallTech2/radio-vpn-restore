@@ -9,6 +9,28 @@ regenerer leur CA, leurs cles ou certificats. La CRL est renouvelee a partir de 
 restaure pour remettre a jour sa validite, sans effacer les revocations.
 Code a valider sur VPS de test ; aucune Release n'est publiee.
 
+## Restauration d'urgence
+
+Sur le VPS de remplacement deja prepare avec radio-vpn radio-v2.4 :
+
+```bash
+sudo apt install -y git
+git clone https://github.com/SmallTech2/radio-vpn-restore.git
+cd radio-vpn-restore
+# Copier l'archive et son fichier .sha256 dans un dossier prive, puis verifier :
+(cd /chemin/sauvegardes && sha256sum -c NOM_ARCHIVE.tar.gz.sha256)
+sudo bash restore.sh
+```
+
+Indiquer le chemin de l'archive `.tar.gz`, confirmer l'IP publique et le compte Linux,
+puis saisir `RESTAURER`.
+
+**Les archives ne sont pas chiffrees et contiennent des secrets, notamment la cle
+privee de la CA OpenVPN et les cles privees des clients. Ce choix est volontaire et
+le risque est accepte pour simplifier la restauration.** Utiliser des dossiers 0700
+et fichiers 0600 sur le VPS/NAS ; ne jamais publier ces archives. SHA-256 controle
+l'integrite, pas l'identite de leur auteur : choisir une source de confiance.
+
 ## 1. Preparer le nouveau VPS
 
 Suivre la [procedure radio-vpn](https://github.com/SmallTech2/radio-vpn/blob/radio-v2.4/docs/installation.md)
@@ -32,20 +54,19 @@ restauration** et ne jamais utiliser `-initialize-only` ou `init-pki` pour resta
 
 Recuperer ce depot, noter le commit (`git rev-parse HEAD`) et conserver cette copie.
 Il n'existe pas encore de Release stable des outils de restauration.
-Installer `age` et l'outil de recuperation des sources :
+Installer l'outil de recuperation des sources :
 
 ```bash
-sudo apt install -y age git
+sudo apt install -y git
 git clone https://github.com/SmallTech2/radio-vpn-restore.git
 cd radio-vpn-restore
 git rev-parse HEAD
 ```
 
-Copier sur le nouveau VPS l'archive chiffree et, temporairement, la cle privee age de secours.
+Copier sur le nouveau VPS l'archive `.tar.gz` et son fichier `.sha256`.
 Utiliser un repertoire prive 0700, des fichiers 0600, et des droits root pour l'execution.
-La cle ne doit pas etre fournie comme texte dans une commande, dans GitHub ou dans un journal.
-Si le fichier SHA-256 est disponible, verifier aussi le transfert avec `sha256sum -c`.
-Le dechiffrement authentifie de toute facon le contenu chiffre.
+Verifier le transfert avec `sha256sum -c` depuis le repertoire contenant les deux fichiers.
+La restauration controle aussi les empreintes internes avant tout remplacement.
 
 ## 2. Lancer la restauration
 
@@ -57,11 +78,10 @@ sudo bash restore.sh
 
 Le script demande uniquement :
 
-1. Chemin local de l'archive `.tar.gz.age`.
-2. Chemin de la cle privee age (necessaire au dechiffrement).
-3. Nouvelle IPv4 publique, avec detection et confirmation lorsque possible.
-4. Compte administrateur **existant**, propose depuis `SUDO_USER` ou l'unique membre du groupe sudo.
-5. Confirmation explicite `RESTAURER` apres les controles.
+1. Chemin local de l'archive `.tar.gz`.
+2. Nouvelle IPv4 publique, avec detection et confirmation lorsque possible.
+3. Compte administrateur **existant**, propose depuis `SUDO_USER` ou l'unique membre du groupe sudo.
+4. Confirmation explicite `RESTAURER` apres les controles.
 
 Un utilisateur different de celui du VPS source est accepte. Il doit deja avoir ete cree
 et verifie par radio-vpn sur la destination. Ses mots de passe et cles SSH restent ceux
@@ -69,7 +89,7 @@ du nouveau VPS. Les services de la reference tournent root et ne contiennent pas
 dependance au nom du compte Linux source ; le nom choisi est inscrit dans les metadonnees
 de restauration, sans import d'UID, de `/etc/passwd` ou de `/etc/shadow`.
 
-Avant toute substitution, le script dechiffre dans un dossier root 0700, controle le format,
+Avant toute substitution, le script copie l archive dans un dossier root 0700, controle gzip, le format,
 les empreintes internes, les chemins, les types, permissions et liens, la version de reference,
 la PKI, les revocations, les IP fixes et SQLite. Il refuse un reseau VPN incompatible avec
 les routes du nouveau VPS. La duree depend surtout de la preparation Debian et de la taille
@@ -78,9 +98,9 @@ des donnees ; aucune duree de restauration sur VPS n'est garantie sans recette r
 ## 3. Remise en service
 
 Apres confirmation : arret de l'UI et du VPN, attente du renouvellement CRL eventuel,
-copie de l'etat precedent puis sauvegarde de secours **chiffree** sous
-`/var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz.age`, acces root 0600.
-La cle de secours est celle fournie pour le dechiffrement, au format age natif.
+copie de l'etat precedent puis sauvegarde de secours `.tar.gz` sous
+`/var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz`, acces root 0600.
+Un fichier `.sha256` accompagne cette sauvegarde de secours.
 Les copies de travail en clair restent dans un dossier root 0700 et sont nettoyees sur
 sortie normale ou erreur interceptable. Un SIGKILL/panne peut laisser ce dossier prive :
 le traiter comme un secret et le nettoyer apres diagnostic.
@@ -105,7 +125,7 @@ verification de texte ne serait pas une validation fonctionnelle.
 **Les sessions VPN du VPS de destination sont interrompues pendant la restauration.**
 Si l'IP publique change, adapter `remote` dans les profils deja distribues, sans changer
 les certificats. Les profils copies sur les postes ne sont pas modifies a distance.
-Reinstaller ensuite radio-vpn-backup avec les cles publiques de collecte et de chiffrement
+Reinstaller ensuite radio-vpn-backup avec la cle SSH publique de collecte
 pour reprendre les sauvegardes automatiques. Adapter l'adresse du VPS dans la tache NAS et
 verifier sa nouvelle empreinte SSH depuis une console de confiance avant de mettre a jour
 `known_hosts` ; ne pas importer les cles SSH d'hote de l'ancien serveur.
@@ -119,17 +139,16 @@ donnees precedentes et de retablir les services qui etaient actifs. SSH et nftab
 ceux de la destination. Tout echec du retour arriere est affiche explicitement.
 Une panne ou un SIGKILL ne peut pas etre intercepte : utiliser alors la console/SSH conserve.
 
-La sauvegarde `before-...tar.gz.age` est un **secours local** de l'installation remplacee,
+La sauvegarde `before-...tar.gz` est un **secours local** de l'installation remplacee,
 pas une archive de collecte au format v1. Pour une recuperation manuelle en maintenance :
 
 ```bash
 sudo -i
 umask 077
 mkdir -m 700 /root/radio-vpn-secours
-age -d -i /chemin/cle-age-privee -o /root/radio-vpn-secours.tar.gz \
-  /var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz.age
-gzip -t /root/radio-vpn-secours.tar.gz
-tar -xpf /root/radio-vpn-secours.tar.gz --same-owner -C /root/radio-vpn-secours
+(cd /var/lib/radio-vpn-restore && sha256sum -c before-DATE-ALEA.tar.gz.sha256)
+gzip -t /var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz
+tar -xpf /var/lib/radio-vpn-restore/before-DATE-ALEA.tar.gz --same-owner -C /root/radio-vpn-secours
 systemctl stop openvpn-ui.service openvpn@server.service radio-renew-crl.timer
 # Depuis le repertoire du depot, remplace uniquement les chemins fixes de l'outil :
 python3 scripts/restore_data.py replace /root/radio-vpn-secours /
@@ -138,9 +157,8 @@ systemctl start openvpn@server.service openvpn-ui.service radio-renew-crl.timer
 ```
 
 Ne lancer cette procedure que sur le secours genere par cet outil et avec un operateur
-present. Verifier les services avant d'effacer les copies en clair. Conserver la cle
-originale hors VPS ; supprimer sa copie temporaire du serveur apres la recette. Les secours
-chiffres locaux ne sont pas purges automatiquement : les retirer apres validation pour
+present. Verifier les services avant d'effacer les copies en clair. Les secours
+locaux ne sont pas purges automatiquement : les retirer apres validation pour
 ne pas remplir le disque a force de restaurations.
 
 ## 5. Recette et limites
@@ -157,8 +175,8 @@ chemins personnalises ou une autre version de radio-vpn sont refuses/non pris en
 Les clients avec cle privee chiffree conservent leur mot de passe ; l'outil ne le connait pas.
 
 La sauvegarde ne peut contenir les modifications posterieures a sa creation : une ancienne
-archive peut perdre des clients ou des revocations recentes. Le chiffrement ne prouve pas
-que le VPS source etait sain. Conserver plusieurs generations et choisir un point fiable.
+archive peut perdre des clients ou des revocations recentes. Une empreinte SHA-256 ne
+prouve pas que le VPS source etait sain. Conserver plusieurs generations et choisir un point fiable.
 
 ## Licence et tests
 

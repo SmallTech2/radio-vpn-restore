@@ -50,26 +50,24 @@ main(){
   [[ $EUID -eq 0 && $# == 0 && -t 0 ]] || die 'Usage dans un terminal : sudo bash restore.sh'
   . /etc/os-release
   [[ $ID == debian && $VERSION_ID == 13 && $(uname -m) == x86_64 ]] || die 'Debian 13 AMD64 requis.'
-  for tool in age age-keygen python3 openssl ip nft logrotate curl; do command -v "$tool" >/dev/null || die "Commande manquante : $tool. Installer les prerequis du README."; done
+  for tool in python3 openssl ip nft logrotate curl; do command -v "$tool" >/dev/null || die "Commande manquante : $tool. Installer les prerequis du README."; done
   python3 "$BASE/scripts/restore_data.py" preflight /
   /usr/sbin/sshd -t
   systemctl is-active --quiet ssh || die 'SSH inactif.'
   systemctl is-active --quiet nftables || die 'Pare-feu nftables inactif.'
   nft -c -f /etc/nftables.conf
-  local archive identity public_ip detected admin answer home
-  read -r -p 'Chemin de la sauvegarde .tar.gz.age : ' archive </dev/tty
+  local archive public_ip detected admin answer home
+  read -r -p 'Chemin de la sauvegarde .tar.gz : ' archive </dev/tty
   [[ -f "$archive" && ! -L "$archive" ]] || die 'Archive locale reguliere requise.'
-  read -r -p 'Chemin de la cle privee age de dechiffrement : ' identity </dev/tty
-  [[ -f "$identity" ]] || die 'Cle age absente.'
-  [[ -z $(find "$identity" -perm /077 -print) ]] || die 'Cle privee age : permissions 0600 requises.'
   install -d -m 700 /var/lib/radio-vpn-restore /var/lib/radio-vpn-backup
   exec 9>/var/lib/radio-vpn-backup/backup.lock
   flock -n 9 || die 'Sauvegarde ou restauration deja active.'
   trap cleanup EXIT
   trap 'exit 1' HUP INT TERM
   WORK=$(mktemp -d /var/lib/radio-vpn-restore/.work.XXXXXXXX)
-  echo 'Dechiffrement et verification de l archive avant remplacement...'
-  age -d -i "$identity" -o "$WORK/backup.tar.gz" "$archive" 2>"$WORK/decrypt-error" || die 'Dechiffrement refuse : cle, archive ou integrite a verifier.'
+  echo 'Verification de l archive avant remplacement...'
+  cp -- "$archive" "$WORK/backup.tar.gz"
+  gzip -t "$WORK/backup.tar.gz"
   python3 "$BASE/scripts/restore_data.py" unpack "$WORK/backup.tar.gz" "$WORK/restore"
   local payload="$WORK/restore/payload"
   detected=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}') || detected=''
@@ -108,12 +106,13 @@ main(){
   ! pgrep -f '[/]easyrsa( |$)|[/]opt/scripts/(genclient|revoke|renew|rmcert|generate_ca)' >/dev/null || die 'Operation PKI active ; reessayer plus tard.'
   systemctl stop openvpn-ui.service openvpn@server.service
   python3 "$BASE/scripts/restore_data.py" preserve / "$WORK/previous"
-  local rescue="/var/lib/radio-vpn-restore/before-$(date -u +%Y%m%dT%H%M%SZ)-$(openssl rand -hex 4).tar.gz.age"
-  age-keygen -y "$identity" > "$WORK/recipients"
+  local rescue="/var/lib/radio-vpn-restore/before-$(date -u +%Y%m%dT%H%M%SZ)-$(openssl rand -hex 4).tar.gz"
   tar -czf "$WORK/previous.tar.gz" -C "$WORK/previous" .
-  age -R "$WORK/recipients" -o "$rescue" "$WORK/previous.tar.gz"
+  gzip -t "$WORK/previous.tar.gz"
+  mv -- "$WORK/previous.tar.gz" "$rescue"
+  (cd /var/lib/radio-vpn-restore; sha256sum "${rescue##*/}" > "${rescue##*/}.sha256")
   chmod 600 "$rescue"
-  echo "Sauvegarde de secours chiffree : $rescue"
+  echo "Sauvegarde de secours .tar.gz : $rescue"
   CHANGED=true
   python3 "$BASE/scripts/restore_data.py" replace "$payload" /
   # Gen-crl conserve index.txt, les cles et les certificats ; il remet a jour la validite de la CRL.
@@ -135,6 +134,5 @@ main(){
   echo 'Restauration terminee : VPN et UI actifs, IP tun0 verifiee, CRL renouvelee sans regeneration de certificats.'
   echo 'Verifier un ancien client et un certificat revoque, puis une nouvelle connexion SSH avant de fermer cette session.'
   echo 'Si l IP publique a change : adapter remote dans les profils deja distribues, sans renouveler les certificats.'
-  echo 'Retirer la copie de la cle privee age de ce VPS apres les verifications.'
 }
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi

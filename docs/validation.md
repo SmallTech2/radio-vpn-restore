@@ -6,8 +6,8 @@ Sur des machines de test uniquement, sans reutiliser une PKI de production dans 
 2. Noter les empreintes CA/serveur/client, numeros de serie, IP fixes et entree R.
 3. Lancer une sauvegarde pendant qu'un client valide est connecte : verifier qu'il reste connecte.
 4. Recuperer depuis DSM par le compte restreint. Tester un refus de shell, de transfert de ports,
-   de lecture arbitraire et d'ecriture. Verifier SHA-256 et dechiffrement avec la cle hors VPS.
-5. Tester disque plein, chiffrement invalide, transfert interrompu et NAS temporairement indisponible :
+   de lecture arbitraire et d'ecriture. Verifier SHA-256, gzip et les permissions des archives non chiffrees.
+5. Tester disque plein, archive corrompue, transfert interrompu et NAS temporairement indisponible :
    aucune archive incomplete ne doit etre visible, les anciennes doivent rester utilisables.
 6. Preparer un autre VPS Debian 13 avec radio-vpn ; suivre le README de radio-vpn-restore.
 7. Comparer les empreintes et IP fixes. La CRL peut avoir une nouvelle date, mais l'entree R reste presente.
