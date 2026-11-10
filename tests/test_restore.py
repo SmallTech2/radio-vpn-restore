@@ -29,6 +29,7 @@ def pack_fixture(root, output):
     manifest = dict(format=1, deployment=archive.metadata(root), files=entries)
     with tarfile.open(output, "w:gz", dereference=False) as tar:
         info = tarfile.TarInfo("payload"); info.type = tarfile.DIRTYPE; info.mode = 0o700
+        info.uid, info.gid = root.stat().st_uid, root.stat().st_gid
         tar.addfile(info)
         for p in sorted(root.rglob("*")):
             info = tar.gettarinfo(str(p), "payload/" + p.relative_to(root).as_posix())
