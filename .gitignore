@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.audit-tools/
+*.age
+*.tar.gz
+*.key
+*.pem
+*.db
+*.sqlite*
+*.partial
+nas.conf

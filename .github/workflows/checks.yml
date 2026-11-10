@@ -1,0 +1,21 @@
+name: Checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends age openssl
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' script; do bash -n "$script"; done < <(find . -name '*.sh' -not -path './.git/*' -print0)
+      - name: Isolated tests
+        run: python3 -B -m unittest discover -s tests -v
