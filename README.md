@@ -1,5 +1,8 @@
 # radio-vpn-restore
 
+🌐 **Translate to English** — Pour consulter cette page en anglais, utilisez la fonction
+de traduction intégrée de votre navigateur. Copiez les commandes depuis l’original français.
+
 Restaure une archive de **radio-vpn-backup** sur un VPS **Debian 13 AMD64 préalablement
 reconstruit avec radio-vpn**, en conservant la CA, les certificats clients, les révocations,
 les IP VPN fixes et les données OpenVPN UI. La CRL est renouvelée sans recréer les certificats.
