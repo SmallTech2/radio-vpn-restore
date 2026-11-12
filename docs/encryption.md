@@ -1,80 +1,52 @@
-# Option : restaurer une archive age
+# Restaurer une archive chiffrée avec age
 
-Cette page concerne seulement les `.tar.gz.age`. Pour une `.tar.gz`, suivre directement
-la [procédure standard](restoration.md) : aucun outil age ni aucune clé ne sont nécessaires.
-L'activation de la sauvegarde chiffrée est expliquée dans le
-[guide backup](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/encryption.md).
+Cette option complète la [procédure de restauration](restoration.md). Une `.tar.gz`
+standard ne demande ni age ni clé. Utiliser la paire native créée avec `age-keygen`
+selon le [guide de sauvegarde chiffrée](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/encryption.md).
+La clé SSH du NAS ou du compte administrateur n’est pas cette clé de déchiffrement.
 
-## 1. Rassembler les fichiers
+## Rassembler et préparer
 
-**Poste d'administration — navigateur DSM, compte NAS `vpnbackup` :** télécharger depuis
-`home/radio-vpn/archives/vps1` l'archive `.tar.gz.age` et son fichier `.age.sha256` séparément.
-Employer votre véritable identifiant VPS si ce n'est pas `vps1`.
+Récupérer l’archive `.tar.gz.age` et ses empreintes depuis ABB ou le collecteur,
+transférer les fichiers puis effectuer l’étape SHA-256 du guide principal. Ne pas
+appliquer `gzip -t` au fichier chiffré.
 
-**Poste de confiance :** retrouver la clé privée age créée au moment de l'activation,
-dans votre coffre ou votre support hors ligne. Ce n'est ni la clé SSH NAS, ni la clé SSH
-administrateur. Ne jamais la recréer en espérant retrouver la même clé ; sa perte empêche
-le déchiffrement. Garder l'original hors du VPS et n'en transférer qu'une copie temporaire.
+Retrouver la clé privée age dans son coffre ou support hors ligne. Ne pas en générer
+une nouvelle : elle ne déchiffrerait pas les archives existantes. Transférer une copie
+avec le SFTP du **compte administrateur du nouveau VPS**, dans le dossier privé
+`$HOME/sauvegardes-radio`, et garder l’original hors du VPS.
 
-## 2. Transférer puis installer age
-
-Préparer d'abord le nouveau VPS et son dossier privé `sauvegardes-radio` comme dans le
-guide standard. Transférer l'archive et son SHA-256 avec le même bloc PowerShell/Bash,
-en choisissant le fichier `.tar.gz.age`. Ne pas appliquer `gzip -t` au fichier chiffré.
-
-**Poste Windows — PowerShell**, dans la session ayant conservé `$Port`, `$Cle`, `$Compte`
-et `$Ip` du guide standard, transférer la copie temporaire de la clé privée age :
-
-```powershell
-$AgeKey = (Read-Host 'Chemin complet de la copie de clé privée age').Trim('"')
-Get-Item -LiteralPath $AgeKey
-scp -P $Port -i $Cle $AgeKey "${Compte}@${Ip}:sauvegardes-radio/"
-```
-
-**Poste Linux/macOS — Bash**, alternative avec les variables du transfert standard :
-
-```bash
-read -r -p 'Chemin complet de la copie de clé privée age : ' AGE_KEY_LOCAL
-scp -P "$VPS_PORT" -i "$SSH_PRIVATE" "$AGE_KEY_LOCAL" "$VPS_ADMIN@$VPS_IP:sauvegardes-radio/"
-```
-
-**Nouveau VPS — compte administrateur Linux :**
+**Nouveau VPS — même administrateur :**
 
 ```bash
 sudo apt update
 sudo apt install -y age
-cd "$HOME/sauvegardes-radio"
-ls -l
-read -r -p 'Nom exact de l archive .tar.gz.age affichée : ' ARCHIVE_NAME
-read -r -p 'Nom exact du fichier de clé age affiché : ' AGE_KEY_NAME
-ARCHIVE="$PWD/$ARCHIVE_NAME"
-AGE_KEY="$PWD/$AGE_KEY_NAME"
-chmod 600 "$ARCHIVE" "$ARCHIVE.sha256" "$AGE_KEY"
-sha256sum -c "$ARCHIVE_NAME.sha256"
-printf 'Archive : %s\nClé temporaire : %s\n' "$ARCHIVE" "$AGE_KEY"
-cd "$HOME/radio-vpn-restore"
-sudo bash restore.sh
+read -r -p 'Chemin absolu de la copie locale de clé privée age : ' AGE_KEY
+chmod 600 "$AGE_KEY"
+printf 'Chemin à indiquer à l assistant : %s\n' "$AGE_KEY"
 ```
 
-Installer le dépôt comme dans le guide standard s'il n'est pas encore présent. Les deux
-noms saisis sont ceux de `ls`, pas des chemins d'exemple. Vérifier `OK` avant de continuer.
+Le chemin est celui du fichier réellement transféré, pas un exemple. Ne pas afficher
+son contenu. Reprendre ensuite les étapes de clonage et de contrôle du guide principal.
 
-## 3. Répondre au script et terminer
+## Contrôler puis restaurer
 
-**Nouveau VPS — même session :** `sudo bash restore.sh --check "$ARCHIVE"` permet
-d’abord de vérifier sans remplacement. Après réussite, `sudo bash restore.sh` lance la
-restauration. Les deux modes utilisent la même détection et le même déchiffrement.
-Donner le chemin complet de l’archive si demandé. Le script reconnaît
-son contenu et demande alors le chemin de la clé privée age, affiché ci-dessus. Il n'affiche
-pas cette clé et ne demande son chemin qu’une fois par exécution. La même clé est
-réutilisée pour chiffrer le secours lors de la restauration réelle. Un fichier absent ou
-vide est signalé explicitement ; les permissions trop ouvertes sont refusées. Une mauvaise clé
-ou un fichier chiffré altéré provoque un refus avant remplacement des données.
+Dans le clone radio-vpn-restore, avec `ARCHIVE` désignant le fichier chiffré :
 
-Après déchiffrement, les confirmations et contrôles sont ceux de la procédure standard.
-La sauvegarde de secours est également chiffrée avec cette clé et accompagnée d'un SHA-256.
-Les données existent temporairement en clair dans un dossier root privé pendant l'opération.
+```bash
+sudo bash restore.sh --check "$ARCHIVE"
+```
 
-Reprendre les contrôles client/SSH/services et le redémarrage du guide standard. Retirer
-ensuite du VPS **la copie temporaire de la clé**, en conservant l'original et ses copies
-de secours hors VPS. Ne pas effacer le coffre original ou la seule copie disponible.
+Le script reconnaît le contenu et demande le chemin de la clé privée une fois pour
+cette exécution. Il refuse une clé absente, vide, incorrecte ou aux permissions trop
+ouvertes ; une archive altérée est également refusée avant remplacement.
+
+Après réussite, lancer `sudo bash restore.sh` et suivre le guide principal. Chaque
+exécution demande à nouveau les renseignements nécessaires : aucun cache de clé n’est
+créé. Dans la restauration réelle, la clé choisie sert aussi à chiffrer le secours local,
+sans nouvelle saisie. Les copies de travail sont temporairement en clair dans un dossier
+root privé, supprimé à la fin normale du script.
+
+Après remise en service, retirer du VPS uniquement la copie temporaire de clé, en
+conservant l’original et ses copies de secours hors VPS. Garder le secours chiffré et son
+SHA-256 tant qu’ils sont nécessaires ; ne pas effacer la seule clé disponible.

@@ -1,73 +1,61 @@
 # radio-vpn-restore
 
-Restauration d'une sauvegarde [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup)
-sur un VPS Debian 13 AMD64 préparé avec **radio-vpn**. La compatibilité est contrôlée
-sur les composants et le réseau, sans imposer le numéro de version de la source ou de
-la destination ; une sauvegarde radio-v2.1 sans fichiers facultatifs est acceptée. La PKI, les certificats,
-révocations, IP fixes et comptes Web sont conservés ; aucune nouvelle CA n'est générée
-par cet outil. La CRL est remise à jour sans renouveler les certificats.
+Restaure une archive de **radio-vpn-backup** sur un VPS **Debian 13 AMD64 préalablement
+reconstruit avec radio-vpn**, en conservant la CA, les certificats clients, les révocations,
+les IP VPN fixes et les données OpenVPN UI. La CRL est renouvelée sans recréer les certificats.
 
-## Première restauration
+Solution validée le 12 novembre 2026 sur Debian 13.7.
 
-Suivre le [guide complet](docs/restoration.md) depuis le VPS vierge : préparation radio-vpn,
-récupération de l'archive sur le Synology, transfert depuis le poste administrateur,
-installation, assistant et contrôles avant/après redémarrage. Chaque commande indique
-sa machine, son compte et comment obtenir les chemins réels.
+## Écosystème Radio VPN
 
-## Restauration d'urgence
+- [radio-vpn](https://github.com/SmallTech2/radio-vpn) : préparer la destination ; [installation](https://github.com/SmallTech2/radio-vpn/blob/main/docs/installation.md).
+- [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup) : produire et collecter l’archive ; [sauvegarde ABB](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/abb.md).
+- **radio-vpn-restore** : contrôler puis réinjecter les données ; [restauration complète](docs/restoration.md).
 
-**Nouveau VPS — compte administrateur Linux avec sudo.** Prérequis : radio-vpn
-entièrement installé avec le même réseau VPN que la sauvegarde, SSH par clé vérifié, archive `.tar.gz` et `.sha256` déjà copiées dans
-un dossier privé. Si ces prérequis manquent, commencer par le guide complet.
+Voir la [présentation générale](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md).
+Une sauvegarde d’un autre outil ou une destination préparée autrement n’est pas garantie
+compatible. Il s’agit du périmètre commun, pas d’une impossibilité technique absolue.
+
+## Restaurer après perte du VPS
+
+Suivre la [procédure chronologique](docs/restoration.md) : reconstruction, récupération
+NAS, transfert SFTP, extraction éventuelle du ZIP, contrôle SHA-256 et installation de l’outil.
+La destination doit utiliser le **même réseau VPN** que la sauvegarde.
+
+Une fois le dépôt cloné et l’archive vérifiée, sur le **nouveau VPS, compte administrateur** :
 
 ```bash
-sudo apt update
-sudo apt install -y git
-git clone https://github.com/SmallTech2/radio-vpn-restore.git "$HOME/radio-vpn-restore"
 cd "$HOME/radio-vpn-restore"
-read -r -p 'Chemin absolu de l archive copiée sur ce VPS : ' ARCHIVE
-(cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
-gzip -t "$ARCHIVE"
+read -r -p 'Chemin absolu de l archive locale : ' ARCHIVE
 sudo bash restore.sh --check "$ARCHIVE"
-# Uniquement apres reussite du controle :
+```
+
+Après réussite, lancer la restauration interactive :
+
+```bash
 sudo bash restore.sh
 ```
 
-Si le dépôt existe déjà, utiliser son dossier propre et `git pull --ff-only` au lieu de
-le cloner à nouveau. Ne poursuivre qu'après réussite des contrôles. Donner au script le
-chemin de l'archive, confirmer l'IP publique et le compte existant, puis taper `RESTAURER`.
-**Le mode standard ne demande ni age ni clé de déchiffrement.** Dans `--check` comme
-dans la restauration, le contenu est détecté automatiquement. Seule une archive age
-déclenche une demande de chemin de clé privée, une fois par exécution ; une clé absente,
-vide ou incorrecte provoque une erreur avant tout remplacement.
+Donner le chemin de l’archive, confirmer l’IP publique et le compte Linux existant, puis
+taper `RESTAURER`. Le VPN de destination est interrompu pendant le remplacement.
+`--check` ne remplace aucune configuration et n’arrête aucun service.
 
-`--check ARCHIVE` demande l’IP publique et le compte existant puis valide une copie privée
-et temporaire : aucune configuration remplacée, aucun service arrêté et aucun verrou de
-sauvegarde créé. La restauration répète ces contrôles avant confirmation. Ce contrôle
-statique ne garantit pas le démarrage réel des services ni les connexions VPN.
+## Données et accès
 
-Les fichiers SSH, nftables et de désactivation IPv6 archivés ne sont jamais appliqués.
-Les configurations de logs sont restaurées si présentes ; sinon celles de destination
-sont conservées. `crlnumber` est facultatif. La CA, les clés, certificats et entrées de
-révocation restent conservés ; seul le renouvellement habituel de la CRL est exécuté.
-Les versions et commits d’origine restent dans les métadonnées, avec la nouvelle IP
-publique et le compte administrateur de destination.
+Le script ne régénère ni la CA ni les certificats sauvegardés. Le compte Linux, son
+mot de passe, ses clés SSH, les clés d’hôte, nftables et les réglages IPv6 de destination
+restent en place. L’UI et son mot de passe sont ceux de la base restaurée. Si l’IPv4
+publique change, adapter `remote` dans les profils déjà distribués, sans renouveler les certificats.
 
-## Guides et limites
+Le format est détecté automatiquement. Une `.tar.gz` ne demande ni age ni clé ; une
+archive chiffrée demande le chemin de sa clé privée age. Les versions et commits d’origine
+sont conservés ; la compatibilité dépend des composants et du format, pas d’une version unique.
+Les archives non chiffrées contiennent la clé privée de la CA : les conserver en privé.
 
-- [Procédure complète, depuis Debian 13 vierge](docs/restoration.md).
-- [Option : restaurer une archive chiffrée avec age](docs/encryption.md).
-- [Erreur, sauvegarde de secours et retour arrière](docs/recovery.md).
-- [Check-list de validation réelle](docs/validation.md).
+## Guides
 
-Les archives standard ne sont pas chiffrées et contiennent notamment la clé privée de
-la CA et les clés clients : ce choix est volontaire et son risque accepté. Stocker les
-fichiers en privé et ne jamais les publier. SHA-256 n'est pas une signature d'auteur.
-
-La restauration interrompt le VPN de destination. Si l'IP publique change, les profils
-déjà distribués nécessitent l'adaptation de `remote`, sans renouveler leurs certificats.
-Les accès SSH, clés d'hôte et pare-feu du nouveau VPS sont conservés. Les tests automatisés
-ne remplacent pas une recette réelle VPS/DSM ; aucune Release des outils n'est publiée.
+[Restauration](docs/restoration.md) · [Chiffrement age](docs/encryption.md) ·
+[Dépannage et secours](docs/recovery.md).
 
 ## Licence
 

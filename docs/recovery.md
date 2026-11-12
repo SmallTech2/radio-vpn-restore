@@ -70,10 +70,10 @@ Le bloc ne demande age et sa clé que pour un secours chiffré, selon le
 [guide séparé](encryption.md). Son SHA-256 porte sur le `.age`, pas sur le tar.gz déchiffré ;
 ne pas modifier les empreintes pour contourner cette distinction.
 
-## Après validation
+## Après remise en service
 
 Les secours locaux ne sont pas purgés automatiquement. Contrôler leur place et les retirer
 seulement lorsque la restauration et la collecte de nouvelles sauvegardes sont validées.
 Les extractions manuelles en clair et copies temporaires de clés sont des secrets : ne pas
 les laisser dans un partage. Éviter toute commande de suppression globale ou non vérifiée.
-Conserver les archives NAS d'origine jusqu'à la recette complète sur VPS.
+Conserver les archives NAS d’origine pendant la remise en service.
