@@ -1,19 +1,18 @@
 # radio-vpn-restore
 
-🌐 **Translate to English** — Pour consulter cette page en anglais, utilisez la fonction
-de traduction intégrée de votre navigateur. Copiez les commandes depuis l’original français.
-
 Restaure une archive de **radio-vpn-backup** sur un VPS **Debian 13 AMD64 préalablement
 reconstruit avec radio-vpn**, en conservant la CA, les certificats clients, les révocations,
 les IP VPN fixes et les données OpenVPN UI. La CRL est renouvelée sans recréer les certificats.
 
 Solution validée le 12 novembre 2026 sur Debian 13.7.
 
-## Écosystème Radio VPN
+## Choisir votre procédure
 
-- [radio-vpn](https://github.com/SmallTech2/radio-vpn) : préparer la destination ; [installation](https://github.com/SmallTech2/radio-vpn/blob/main/docs/installation.md).
-- [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup) : produire et collecter l’archive ; [sauvegarde ABB](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/abb.md).
-- **radio-vpn-restore** : contrôler puis réinjecter les données ; [restauration complète](docs/restoration.md).
+| Votre objectif | Projet | Procédure directe |
+| --- | --- | --- |
+| Installer un serveur VPN | [radio-vpn](https://github.com/SmallTech2/radio-vpn) | [Installer le serveur VPN](https://github.com/SmallTech2/radio-vpn/blob/main/README.md#installer-le-serveur-vpn) |
+| Sauvegarder ce serveur | [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup) | [Installer la sauvegarde sur le VPS](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/vps-installation.md) |
+| Reconstruire et restaurer | [radio-vpn-restore](https://github.com/SmallTech2/radio-vpn-restore) | [Reconstruire et restaurer le serveur](docs/restoration.md) |
 
 Voir la [présentation générale](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md).
 Une sauvegarde d’un autre outil ou une destination préparée autrement n’est pas garantie
@@ -54,6 +53,9 @@ Le format est détecté automatiquement. Une `.tar.gz` ne demande ni age ni clé
 archive chiffrée demande le chemin de sa clé privée age. Les versions et commits d’origine
 sont conservés ; la compatibilité dépend des composants et du format, pas d’une version unique.
 Les archives non chiffrées contiennent la clé privée de la CA : les conserver en privé.
+
+Après remise en service, [réinstaller radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/vps-installation.md)
+et vérifier la collecte NAS : la restauration ne recrée ni le compte de collecte ni son cron.
 
 ## Guides
 

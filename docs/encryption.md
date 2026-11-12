@@ -1,5 +1,7 @@
 # Restaurer une archive chiffrée avec age
 
+[Accueil restauration](../README.md) · [Procédure complète](restoration.md) · [Dépannage](recovery.md) · [Écosystème](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md)
+
 Cette option complète la [procédure de restauration](restoration.md). Une `.tar.gz`
 standard ne demande ni age ni clé. Utiliser la paire native créée avec `age-keygen`
 selon le [guide de sauvegarde chiffrée](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/encryption.md).

@@ -1,5 +1,7 @@
 # Reconstruire et restaurer un serveur
 
+[Accueil restauration](../README.md) · [Dépannage](recovery.md) · [Écosystème](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md)
+
 Cette procédure concerne un **nouveau VPS Debian 13 AMD64**, une sauvegarde de
 radio-vpn-backup et un compte administrateur Linux avec sudo. En session root,
 omettez `sudo`. Les commandes du VPS sont à saisir dans Bash.
@@ -8,6 +10,17 @@ La restauration conserve la CA, les certificats clients, les révocations, les I
 fixes et la base OpenVPN UI. Elle remplace aussi le binaire et les ressources UI par
 ceux de l’archive. Le compte Linux, son mot de passe, ses clés SSH, les clés d’hôte,
 nftables et les réglages IPv6 du nouveau VPS restent en place.
+
+**Dans cette page**
+
+- [1. Préparer le nouveau VPS](#1-préparer-le-nouveau-vps)
+- [2. Installer le socle avec radio-vpn](#2-installer-le-socle-avec-radio-vpn)
+- [3. Récupérer la sauvegarde depuis le NAS](#3-récupérer-la-sauvegarde-depuis-le-nas)
+- [4. Transférer les fichiers et extraire le ZIP éventuel](#4-transférer-les-fichiers-et-extraire-le-zip-éventuel)
+- [5. Préparer et contrôler le fichier SHA-256](#5-préparer-et-contrôler-le-fichier-sha-256)
+- [6. Installer radio-vpn-restore et contrôler la compatibilité](#6-installer-radio-vpn-restore-et-contrôler-la-compatibilité)
+- [7. Restaurer](#7-restaurer)
+- [8. Reconnecter les clients et reprendre l’exploitation](#8-reconnecter-les-clients-et-reprendre-lexploitation)
 
 ## 1. Préparer le nouveau VPS
 
@@ -55,10 +68,10 @@ Les services doivent être actifs. Le chemin affiché est le véritable dossier 
 
 - **ABB** : ouvrir la tâche du serveur et le point souhaité dans le navigateur de
   restauration/ABB Portal. Télécharger le dossier daté contenant `backup.tar.gz`
-  (ou `backup.tar.gz.age`) et `SHA256SUMS`.
+  (ou `backup.tar.gz.age`) et `SHA256SUMS` ; voir [la récupération dans ABB](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/abb.md#6-contrôler-la-collecte-et-récupérer-les-fichiers).
 - **Collecteur personnalisé** : dans File Station, ouvrir le dossier de collecte choisi
   lors de son installation. Télécharger l’archive datée et son fichier de même nom
-  terminé par `.sha256`. Le [guide de collecte](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/installation.md)
+  terminé par `.sha256`. La [récupération avec le collecteur](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/installation.md#récupérer-manuellement-une-archive)
   explique où retrouver ce dossier.
 
 Garder les noms d’origine. Ne pas demander à ABB de réécrire le VPS source. Si le
@@ -192,8 +205,9 @@ ancien client avec son profil, puis accéder à l’UI par le VPN ou par le
 Les identifiants Web sont ceux de la base sauvegardée. Le serveur VPN garde la première
 adresse utilisable du réseau ; les clients retrouvent leurs adresses CCD.
 
-Réinstaller la [sauvegarde et sa collecte](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/abb.md)
-sur le nouveau VPS. Leur compte SSH et le cron ne sont pas recréés par la restauration.
+Réinstaller [radio-vpn-backup sur le nouveau VPS](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/vps-installation.md),
+puis vérifier la collecte [ABB](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/abb.md#5-configurer-abb)
+ou [personnalisée](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/installation.md). Leur compte SSH et le cron ne sont pas recréés par la restauration.
 Vérifier sa nouvelle empreinte d’hôte avant de reconfigurer la connexion NAS. Conserver
 les sauvegardes d’origine et le secours local pendant la remise en service.
 

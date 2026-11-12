@@ -1,5 +1,7 @@
 # Erreur et retour arrière
 
+[Accueil restauration](../README.md) · [Procédure complète](restoration.md) · [Écosystème](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md)
+
 ## Avant le remplacement
 
 **Nouveau VPS — administrateur Linux :** si le script refuse l'archive, conserver son message
