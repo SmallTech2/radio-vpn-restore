@@ -30,3 +30,38 @@ jobs:
             exit 1
           fi
           cat "$RUNNER_TEMP/tests.log"
+
+  publish:
+    name: Publish official version
+    if: github.ref == 'refs/tags/v1.0.0'
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify version and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION=$(cat VERSION)
+          [[ "$VERSION" == "$GITHUB_REF_NAME" && "$VERSION" == v1.0.0 ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          Restaure les données sur un serveur reconstruit, en conservant la CA, les certificats clients, les révocations, les IP fixes et la base OpenVPN UI. Contrôle préalable non destructif et préservation des accès SSH de destination.
+
+          Distribution officielle commune : radio-vpn, radio-vpn-backup et radio-vpn-restore en v1.0.0, sous Debian 13 AMD64. La destination de restauration doit utiliser le même réseau VPN. La compatibilité avec toutes les versions historiques n’est pas garantie.
+
+          Projets complémentaires :
+          - [radio-vpn](https://github.com/SmallTech2/radio-vpn)
+          - [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup)
+
+          Les archives sources proposées par GitHub contiennent les scripts, les guides et le fichier VERSION de ce tag. Elles ne contiennent aucune donnée de production.
+          NOTES
+          printf '\nCommit source : `%s`\nVérifications : https://github.com/%s/actions/runs/%s\n' "$GITHUB_SHA" "$GH_REPO" "$GITHUB_RUN_ID" >> "$RUNNER_TEMP/release-notes.md"
+          gh release create "$VERSION" --verify-tag --latest --target "$GITHUB_SHA" \
+            --title "$VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"

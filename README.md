@@ -22,6 +22,10 @@ Les versions et commits d’origine sont conservés.
 
 Solution validée le 12 novembre 2026 sur Debian 13.7.
 
+**Version officielle actuelle : [v1.0.0](https://github.com/SmallTech2/radio-vpn-restore/releases/tag/v1.0.0).**
+Référence : [VERSION](VERSION). Les trois projets partagent ce même numéro de version ;
+la distribution officielle associe radio-vpn, radio-vpn-backup et radio-vpn-restore en `v1.0.0`.
+
 ## Installation
 
 **[Ouvrir la procédure complète de reconstruction et restauration](docs/restoration.md).**
