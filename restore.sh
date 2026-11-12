@@ -129,7 +129,8 @@ main(){
   id -nG "$admin" | tr ' ' '\n' | grep -qx sudo || die 'Compte sudo existant requis ; creer ce compte avec radio-vpn.'
   home=$(getent passwd "$admin" | cut -d: -f6)
   [[ -s "$home/.ssh/authorized_keys" ]] || die 'Cle SSH du nouveau compte absente.'
-  /usr/sbin/sshd -T -C "user=$admin,host=localhost,addr=127.0.0.1" | grep -qx 'pubkeyauthentication yes' || die 'Acces SSH par cle non autorise.'
+  # Lire toute la sortie : grep -q peut fermer le pipe et faire echouer sshd par SIGPIPE.
+  /usr/sbin/sshd -T -C "user=$admin,host=localhost,addr=127.0.0.1" | grep -x 'pubkeyauthentication yes' >/dev/null || die 'Acces SSH par cle non autorise.'
   python3 "$BASE/scripts/restore_data.py" update "$payload" "$public_ip" "$admin"
   python3 "$BASE/scripts/restore_data.py" compatible "$payload" /
   python3 "$BASE/scripts/restore_data.py" routes "$payload"
