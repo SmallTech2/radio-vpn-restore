@@ -1,68 +1,75 @@
-# radio-vpn-restore
+# Radio VPN Restore
 
-Restaure une archive de **radio-vpn-backup** sur un VPS **Debian 13 AMD64 préalablement
-reconstruit avec radio-vpn**, en conservant la CA, les certificats clients, les révocations,
-les IP VPN fixes et les données OpenVPN UI. La CRL est renouvelée sans recréer les certificats.
+[Installation](#installation) · [Guides utilisateur](#guides-utilisateur) · [Écosystème Radio VPN](#écosystème-radio-vpn)
+
+## Présentation
+
+radio-vpn-restore restaure une archive de radio-vpn-backup sur un VPS **Debian 13 AMD64
+préalablement reconstruit avec radio-vpn**. Il conserve la CA, les certificats clients,
+les révocations, les IP VPN fixes et la base OpenVPN UI, sans régénérer les certificats.
+La destination doit utiliser **le même réseau VPN** que la sauvegarde.
+
+Une sauvegarde d’un autre outil ou une destination préparée autrement n’est pas garantie
+compatible ; voir le [périmètre de l’écosystème](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md#périmètre-de-compatibilité).
+La compatibilité dépend du format et des composants, pas d’une égalité de versions.
+Les versions et commits d’origine sont conservés.
 
 Solution validée le 12 novembre 2026 sur Debian 13.7.
 
-## Choisir votre procédure
+## Installation
 
-| Votre objectif | Projet | Procédure directe |
-| --- | --- | --- |
-| Installer un serveur VPN | [radio-vpn](https://github.com/SmallTech2/radio-vpn) | [Installer le serveur VPN](https://github.com/SmallTech2/radio-vpn/blob/main/README.md#installer-le-serveur-vpn) |
-| Sauvegarder ce serveur | [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup) | [Installer la sauvegarde sur le VPS](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/vps-installation.md) |
-| Reconstruire et restaurer | [radio-vpn-restore](https://github.com/SmallTech2/radio-vpn-restore) | [Reconstruire et restaurer le serveur](docs/restoration.md) |
+**[Ouvrir la procédure complète de reconstruction et restauration](docs/restoration.md).**
 
-Voir la [présentation générale](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md).
-Une sauvegarde d’un autre outil ou une destination préparée autrement n’est pas garantie
-compatible. Il s’agit du périmètre commun, pas d’une impossibilité technique absolue.
+Elle détaille la préparation du nouveau VPS avec radio-vpn, la récupération depuis le NAS,
+le transfert, le contrôle SHA-256, le clonage de radio-vpn-restore, le contrôle préalable
+`--check` et la restauration. Commencer au début sur un VPS vierge ; si le socle est déjà
+prêt, rejoindre [l’installation de l’outil et le contrôle de compatibilité](docs/restoration.md#6-installer-radio-vpn-restore-et-contrôler-la-compatibilité).
 
-## Restaurer après perte du VPS
+## Guides utilisateur
 
-Suivre la [procédure chronologique](docs/restoration.md) : reconstruction, récupération
-NAS, transfert SFTP, extraction éventuelle du ZIP, contrôle SHA-256 et installation de l’outil.
-La destination doit utiliser le **même réseau VPN** que la sauvegarde.
+- [Reconstruire le serveur](docs/restoration.md#1-préparer-le-nouveau-vps) : prérequis et installation du socle.
+- [Récupérer et transférer une archive](docs/restoration.md#3-récupérer-la-sauvegarde-depuis-le-nas) : ABB ou collecteur personnalisé.
+- [Contrôler la compatibilité](docs/restoration.md#6-installer-radio-vpn-restore-et-contrôler-la-compatibilité) : `--check` sans arrêter de service ni remplacer de configuration.
+- [Restaurer les données](docs/restoration.md#7-restaurer) : confirmation et remplacement ; le VPN de destination est interrompu pendant l’opération.
+- [Reconnecter les clients](docs/restoration.md#8-reconnecter-les-clients-et-reprendre-lexploitation) : contrôles et adaptation de `remote` si l’IPv4 publique change.
 
-Une fois le dépôt cloné et l’archive vérifiée, sur le **nouveau VPS, compte administrateur** :
+## Sauvegarde et restauration
 
-```bash
-cd "$HOME/radio-vpn-restore"
-read -r -p 'Chemin absolu de l archive locale : ' ARCHIVE
-sudo bash restore.sh --check "$ARCHIVE"
-```
+- [Installer radio-vpn-backup et produire une archive](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/vps-installation.md).
+- Collecter avec [Synology ABB](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/abb.md) ou le [collecteur personnalisé](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/installation.md).
+- [Suivre la restauration complète](docs/restoration.md).
+- [Réinstaller ensuite la sauvegarde et vérifier la collecte](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/vps-installation.md) : le compte de collecte et son cron ne sont pas recréés par la restauration.
 
-Après réussite, lancer la restauration interactive :
+## Sécurité et maintenance
 
-```bash
-sudo bash restore.sh
-```
+Le compte Linux, son mot de passe, ses clés SSH, les clés d’hôte, nftables et les réglages
+IPv6 de destination sont conservés. L’UI et ses identifiants sont ceux de la base restaurée.
+Les archives non chiffrées contiennent la clé privée de la CA : les conserver dans un
+emplacement protégé. Une `.tar.gz` ne demande ni age ni clé de déchiffrement.
 
-Donner le chemin de l’archive, confirmer l’IP publique et le compte Linux existant, puis
-taper `RESTAURER`. Le VPN de destination est interrompu pendant le remplacement.
-`--check` ne remplace aucune configuration et n’arrête aucun service.
+- [Archive chiffrée avec age](docs/encryption.md) : clé privée requise uniquement pour ce format.
+- [Dépannage et secours](docs/recovery.md) : contrôles avant remplacement et retour arrière.
+- [Contrôles après remise en service](docs/restoration.md#8-reconnecter-les-clients-et-reprendre-lexploitation).
+- [Maintenance du serveur VPN](https://github.com/SmallTech2/radio-vpn/blob/main/docs/maintenance.md).
 
-## Données et accès
+## Références techniques
 
-Le script ne régénère ni la CA ni les certificats sauvegardés. Le compte Linux, son
-mot de passe, ses clés SSH, les clés d’hôte, nftables et les réglages IPv6 de destination
-restent en place. L’UI et son mot de passe sont ceux de la base restaurée. Si l’IPv4
-publique change, adapter `remote` dans les profils déjà distribués, sans renouveler les certificats.
+- [Script de restauration](restore.sh) : parcours interactif et contrôle préalable.
+- [Lecture et intégrité des archives](scripts/archive.py).
+- [Validation et remplacement des données](scripts/restore_data.py).
+- [Format de sauvegarde et compatibilité](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/format.md).
+- [Suivi technique](docs/validation.md).
 
-Le format est détecté automatiquement. Une `.tar.gz` ne demande ni age ni clé ; une
-archive chiffrée demande le chemin de sa clé privée age. Les versions et commits d’origine
-sont conservés ; la compatibilité dépend des composants et du format, pas d’une version unique.
-Les archives non chiffrées contiennent la clé privée de la CA : les conserver en privé.
-
-Après remise en service, [réinstaller radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/vps-installation.md)
-et vérifier la collecte NAS : la restauration ne recrée ni le compte de collecte ni son cron.
-
-## Guides
-
-[Restauration](docs/restoration.md) · [Chiffrement age](docs/encryption.md) ·
-[Dépannage et secours](docs/recovery.md).
-
-## Licence
+### Licence et crédits
 
 [MIT](LICENSE). Outil compagnon de Radio Bonheur pour radio-vpn, dérivé de
 [d3vilh/openvpn-ui](https://github.com/d3vilh/openvpn-ui), avec les attributions conservées.
+
+## Écosystème Radio VPN
+
+- [radio-vpn](https://github.com/SmallTech2/radio-vpn) : [installer un serveur VPN](https://github.com/SmallTech2/radio-vpn/blob/main/docs/installation.md).
+- [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup) : [sauvegarder ce serveur](https://github.com/SmallTech2/radio-vpn-backup/blob/main/docs/vps-installation.md).
+- [radio-vpn-restore](https://github.com/SmallTech2/radio-vpn-restore) : [reconstruire et restaurer](docs/restoration.md).
+
+La [présentation de l’écosystème](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md)
+explique les rôles et dépendances des trois projets.
