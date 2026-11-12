@@ -4,10 +4,16 @@
 
 ## Présentation
 
-radio-vpn-restore restaure une archive de radio-vpn-backup sur un VPS **Debian 13 AMD64
-préalablement reconstruit avec radio-vpn**. Il conserve la CA, les certificats clients,
-les révocations, les IP VPN fixes et la base OpenVPN UI, sans régénérer les certificats.
-La destination doit utiliser **le même réseau VPN** que la sauvegarde.
+radio-vpn-restore remet en service les données d’une archive de [radio-vpn-backup](https://github.com/SmallTech2/radio-vpn-backup)
+sur un VPS **Debian 13 AMD64 préalablement reconstruit avec radio-vpn**. Il conserve la CA,
+les certificats clients, les révocations, les IP VPN fixes et la base OpenVPN UI : les
+équipements peuvent reprendre leur connexion sans renouveler leurs certificats.
+Si l’IP publique change, leurs profils doivent être adaptés.
+
+Le parcours interactif contrôle l’archive et la compatibilité avant remplacement ;
+le mode `--check` permet cette vérification sans arrêter les services. La restauration
+préserve les accès SSH et les réglages réseau propres au nouveau VPS, puis remet en route
+OpenVPN et l’UI. La destination doit utiliser **le même réseau VPN** que la sauvegarde.
 
 Une sauvegarde d’un autre outil ou une destination préparée autrement n’est pas garantie
 compatible ; voir le [périmètre de l’écosystème](https://github.com/SmallTech2/radio-vpn/blob/main/docs/ecosystem.md#périmètre-de-compatibilité).
