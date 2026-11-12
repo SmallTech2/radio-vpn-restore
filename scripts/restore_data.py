@@ -119,6 +119,50 @@ def update(payload, public_ip, admin):
     # Aucun UID ni compte Linux de l'ancien VPS n'est importe ; les services UI/PKI tournent root.
 
 
+def option_pattern(value):
+    escaped = re.escape(value)
+    return f'''(?:{escaped}|"{escaped}"|'{escaped}')'''
+
+
+def directive_lines(server, name):
+    pattern = r"^[ \t]*(?:" + option_pattern(name) + "|" + option_pattern("--" + name) + r")(?=[ \t]|$)"
+    return [(number, line) for number, line in enumerate(server.splitlines(), 1) if re.match(pattern, line)]
+
+
+def require_directive(server, name, alternatives, label="server.conf"):
+    lines = directive_lines(server, name)
+    expected = " ou ".join(" ".join((name, *args)) for args in alternatives)
+    if not lines:
+        raise ValueError(f"{label} : directive '{name}' absente (attendu : {expected}).")
+    if len(lines) != 1:
+        numbers = ", ".join(str(number) for number, _ in lines)
+        raise ValueError(f"{label} : directive '{name}' dupliquee aux lignes {numbers}.")
+    number, line = lines[0]
+    prefixes = "(?:" + option_pattern(name) + "|" + option_pattern("--" + name) + ")"
+    arguments = "(?:" + "|".join("".join(r"[ \t]+" + option_pattern(arg) for arg in args) for args in alternatives) + ")"
+    # Les modeles generes ajoutent un commentaire apres la directive server.
+    # Le commentaire doit commencer a une frontiere de parametre, pas au milieu d'une valeur.
+    if not re.fullmatch(r"[ \t]*" + prefixes + arguments + r"(?:[ \t]+[#;].*)?[ \t]*", line):
+        raise ValueError(f"{label} ligne {number} : directive '{name}' incompatible (attendu : {expected}).")
+
+
+def validate_openvpn(server, network):
+    for name, args in {"dev": ("tun0",), "topology": ("subnet",), "client-to-client": (), "ccd-exclusive": (),
+                       "server": (str(network.network_address), str(network.netmask), "nopool")}.items():
+        require_directive(server, name, [args])
+    for name in ("local", "bind-dev"):
+        lines = directive_lines(server, name)
+        if lines:
+            raise ValueError(f"server.conf ligne {lines[0][0]} : directive '{name}' non prise en charge (liaison reseau personnalisee).")
+    for name, path in {"ca": "/etc/openvpn/pki/ca.crt", "cert": "/etc/openvpn/pki/issued/server.crt",
+                       "key": "/etc/openvpn/pki/private/server.key", "crl-verify": "/etc/openvpn/pki/crl.pem",
+                       "tls-crypt": "/etc/openvpn/pki/ta.key", "dh": "/etc/openvpn/pki/dh.pem",
+                       "client-config-dir": "/etc/openvpn/staticclients"}.items():
+        alternatives = [(path,)]
+        if path.startswith("/etc/openvpn/pki/"): alternatives.append((path.removeprefix("/etc/openvpn/"),))
+        require_directive(server, name, alternatives)
+
+
 def validate(payload):
     preflight(payload)
     validate_pki(payload)
@@ -132,18 +176,7 @@ def validate(payload):
     matches = re.findall(r'^RadioVpnNetwork\s*=\s*"?([^"\s]+)"?\s*$', app, re.M)
     if matches != [str(network)]: raise ValueError("Reseau UI incoherent avec les metadonnees.")
     server = (payload / "etc/openvpn/server.conf").read_text()
-    required = [r"^dev\s+tun0\s*$", r"^topology\s+subnet\s*$", r"^client-to-client\s*$", r"^ccd-exclusive\s*$",
-                r"^server\s+" + re.escape(str(network.network_address)) + r"\s+" + re.escape(str(network.netmask)) + r"\s+nopool\s*$"]
-    if not all(re.search(pattern, server, re.M) for pattern in required): raise ValueError("Configuration OpenVPN hors reference.")
-    if re.search(r"^(local|bind-dev)\s", server, re.M): raise ValueError("Liaison reseau personnalisee : adaptation manuelle necessaire.")
-    for directive, path in {"ca": "/etc/openvpn/pki/ca.crt", "cert": "/etc/openvpn/pki/issued/server.crt",
-                            "key": "/etc/openvpn/pki/private/server.key", "crl-verify": "/etc/openvpn/pki/crl.pem",
-                            "tls-crypt": "/etc/openvpn/pki/ta.key", "dh": "/etc/openvpn/pki/dh.pem",
-                            "client-config-dir": "/etc/openvpn/staticclients"}.items():
-        alternatives = [path]
-        if path.startswith("/etc/openvpn/pki/"): alternatives.append(path.removeprefix("/etc/openvpn/"))
-        if not re.search(r"^" + re.escape(directive) + r"\s+(?:" + "|".join(map(re.escape, alternatives)) + r")\s*$", server, re.M):
-            raise ValueError("Chemin OpenVPN non pris en charge : " + directive)
+    validate_openvpn(server, network)
 
 
 def compatible(payload, destination):
@@ -153,9 +186,8 @@ def compatible(payload, destination):
         raise ValueError("Reseaux VPN differents : preparer la destination avec le reseau sauvegarde pour conserver son pare-feu.")
     network = ipaddress.IPv4Network(metadata(destination)["network"])
     server = (destination / "etc/openvpn/server.conf").read_text()
-    if not re.search(r"^server\s+" + re.escape(str(network.network_address)) + r"\s+" +
-                     re.escape(str(network.netmask)) + r"\s+nopool\s*$", server, re.M):
-        raise ValueError("Reseau OpenVPN de destination incoherent avec ses metadonnees.")
+    require_directive(server, "server", [(str(network.network_address), str(network.netmask), "nopool")],
+                      label="server.conf de destination")
     replacement_paths(payload, destination)
 
 

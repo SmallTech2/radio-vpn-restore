@@ -49,6 +49,6 @@ def installation(root, contract):
     (root / "etc/openvpn/staticclients/client").write_text("ifconfig-push 10.3.0.10 255.255.0.0\n")
     (root / "etc/openvpn/config/client.conf").write_text("client\nremote 198.51.100.10 1194 udp\n")
     (root / "etc/openvpn/clients/client.ovpn").write_text("client\nremote 198.51.100.10 1194 udp\n<key>\nfixture\n</key>\n")
-    (root / "etc/openvpn/server.conf").write_text("dev tun0\ntopology subnet\nclient-to-client\nccd-exclusive\nserver 10.3.0.0 255.255.0.0 nopool\nca /etc/openvpn/pki/ca.crt\ncert /etc/openvpn/pki/issued/server.crt\nkey /etc/openvpn/pki/private/server.key\ncrl-verify /etc/openvpn/pki/crl.pem\ntls-crypt /etc/openvpn/pki/ta.key\ndh /etc/openvpn/pki/dh.pem\nclient-config-dir /etc/openvpn/staticclients\n")
+    (root / "etc/openvpn/server.conf").write_text((pathlib.Path(__file__).parent / "data/server-generated.conf").read_text())
     (pki / "private/ca.key").chmod(0o600)
     (root / "opt/scripts/qrencode").symlink_to("/usr/bin/qrencode")
